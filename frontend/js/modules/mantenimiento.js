@@ -60,6 +60,11 @@ export async function renderMantenimiento(container, searchQuery = '') {
   };
 
   const openNuevoModal = () => {
+    if (!unidades.length) {
+      showToast('Primero registra al menos una unidad.', 'error');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
     openModal({
       title: 'Nuevo mantenimiento',
       bodyHtml: `
@@ -79,11 +84,11 @@ export async function renderMantenimiento(container, searchQuery = '') {
           </div>
           <div class="field-group">
             <label class="field-label">Fecha</label>
-            <input name="fecha" type="date" class="input" value="2026-11-12" required />
+            <input name="fecha" type="date" class="input" value="${today}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Kilometraje</label>
-            <input name="km" type="number" class="input" value="186026" required min="0" />
+            <input name="km" type="number" class="input" placeholder="Ej. 12500" required min="0" />
           </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Detalle del trabajo realizado</label>

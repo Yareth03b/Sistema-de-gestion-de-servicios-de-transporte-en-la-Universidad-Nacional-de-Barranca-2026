@@ -173,7 +173,7 @@ export const api = {
       if (idx >= 0) db.abastecimientos[idx] = { ...db.abastecimientos[idx], ...payload };
     } else {
       const prev = db.abastecimientos.find((a) => a.id_unidad === Number(payload.id_unidad));
-      const kmCons = prev ? Math.max(0, Number(payload.km_actual) - Number(prev.km_actual)) : 350;
+      const kmCons = prev ? Math.max(0, Number(payload.km_actual) - Number(prev.km_actual)) : 0;
       db.abastecimientos.unshift({
         id_abastecimiento: nextId(db.abastecimientos, 'id_abastecimiento'),
         km_consumidos: kmCons,

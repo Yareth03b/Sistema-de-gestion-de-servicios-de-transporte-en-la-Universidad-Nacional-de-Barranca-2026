@@ -101,6 +101,11 @@ export async function renderTurnos(container, searchQuery = '') {
   };
 
   const openTurnoModal = (existing = null) => {
+    if (!unidades.length || !conductores.length) {
+      showToast('Primero registra al menos una unidad y un conductor.', 'error');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
     openModal({
       title: existing ? 'Editar turno' : 'Nuevo turno',
       bodyHtml: `
@@ -119,11 +124,12 @@ export async function renderTurnos(container, searchQuery = '') {
           </div>
           <div class="field-group">
             <label class="field-label">Fecha</label>
-            <input name="fecha" type="date" class="input" value="${existing?.fecha || '2026-11-12'}" required />
+            <input name="fecha" type="date" class="input" value="${existing?.fecha || today}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Ruta</label>
-            <select name="id_ruta" class="select" required>
+            <select name="id_ruta" class="select">
+              <option value="0">Sin ruta de referencia</option>
               ${rutas.map((r) => `<option value="${r.id_ruta}" ${existing?.id_ruta === r.id_ruta ? 'selected' : ''}>${escapeHtml(r.punto_salida)} ↔ ${escapeHtml(r.punto_llegada)} (${r.km_referencia} km)</option>`).join('')}
             </select>
           </div>
@@ -137,11 +143,11 @@ export async function renderTurnos(container, searchQuery = '') {
           </div>
           <div class="field-group">
             <label class="field-label">Km inicial</label>
-            <input name="km_inicial" type="number" class="input" value="${existing?.km_inicial ?? 98850}" required min="0" />
+            <input name="km_inicial" type="number" class="input" value="${existing?.km_inicial ?? ''}" placeholder="Ej. 12000" required min="0" />
           </div>
           <div class="field-group">
             <label class="field-label">Km final</label>
-            <input name="km_final" type="number" class="input" value="${existing?.km_final ?? 98880}" required min="1" />
+            <input name="km_final" type="number" class="input" value="${existing?.km_final ?? ''}" placeholder="Ej. 12045" required min="1" />
           </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Observaciones</label>

@@ -99,17 +99,22 @@ export async function renderCombustible(container, searchQuery = '') {
   };
 
   const openValeModal = (existing = null) => {
+    if (!unidades.length || !conductores.length) {
+      showToast('Primero registra al menos una unidad y un conductor.', 'error');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
     openModal({
       title: existing ? 'Editar vale de combustible' : 'Nuevo vale de combustible',
       bodyHtml: `
         <form id="vale-form" class="form-grid-2">
           <div class="field-group">
             <label class="field-label">N.° de vale</label>
-            <input name="nro_vale" class="input" placeholder="001-0457" value="${escapeHtml(existing?.nro_vale || '')}" required />
+            <input name="nro_vale" class="input" placeholder="001-0001" value="${escapeHtml(existing?.nro_vale || '')}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Fecha</label>
-            <input name="fecha" type="date" class="input" value="${existing?.fecha || '2026-11-12'}" required />
+            <input name="fecha" type="date" class="input" value="${existing?.fecha || today}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Unidad</label>
@@ -126,6 +131,7 @@ export async function renderCombustible(container, searchQuery = '') {
           <div class="field-group">
             <label class="field-label">Área solicitante</label>
             <select name="id_area" class="select">
+              <option value="">Sin área específica</option>
               ${areas.map((ar) => `<option value="${ar.id_area}" ${existing?.id_area === ar.id_area ? 'selected' : ''}>${escapeHtml(ar.nombre)}</option>`).join('')}
             </select>
           </div>
@@ -139,7 +145,7 @@ export async function renderCombustible(container, searchQuery = '') {
           </div>
           <div class="field-group">
             <label class="field-label">Km actual</label>
-            <input name="km_actual" type="number" class="input" value="${existing?.km_actual ?? 186026}" required min="0" />
+            <input name="km_actual" type="number" class="input" value="${existing?.km_actual ?? ''}" placeholder="Ej. 12045" required min="0" />
           </div>
           <div class="field-group">
             <label class="field-label">Galones</label>
@@ -172,7 +178,7 @@ export async function renderCombustible(container, searchQuery = '') {
             fecha: fd.get('fecha'),
             id_unidad: Number(fd.get('id_unidad')),
             id_conductor: Number(fd.get('id_conductor')),
-            id_area: Number(fd.get('id_area')),
+            id_area: fd.get('id_area') ? Number(fd.get('id_area')) : null,
             tipo_combustible: fd.get('tipo_combustible'),
             km_actual: Number(fd.get('km_actual')),
             galones,
