@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { CONFIG } from './config.js';
 import { formatDateES, showToast } from './utils.js';
-import { initAuth, getSession } from './modules/auth.js';
+import { initAuth, clearSession } from './modules/auth.js';
 import { renderDashboard } from './modules/dashboard.js';
 import { renderTurnos } from './modules/turnos.js';
 import { renderCombustible } from './modules/combustible.js';
@@ -101,7 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('notif-btn').addEventListener('click', () => navigate('dashboard'));
 
-  const session = getSession();
-  if (session) showApp(session);
-  else showLogin();
+  clearSession();
+  showLogin();
+
 });
