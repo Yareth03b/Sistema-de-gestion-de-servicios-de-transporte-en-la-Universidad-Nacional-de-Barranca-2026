@@ -71,9 +71,10 @@ export function esBus(u) {
 // Rendimiento de UNA unidad en un periodo: km consumidos ÷ galones.
 // null si falta el vale anterior al periodo (algún km_consumidos es null) o no hay galones.
 export function rendimientoPeriodo(vales) {
-  const galones = vales.reduce((total, vale) => total + Number(vale.galones), 0);
-  if (galones <= 0 || vales.some(vale => vale.km_consumidos == null)) return null;
-  return vales.reduce((total, vale) => total + vale.km_consumidos, 0) / galones;
+  const validos = vales.filter(vale => vale.km_consumidos != null && Number(vale.galones) > 0);
+  const galones = validos.reduce((total, vale) => total + Number(vale.galones), 0);
+  if (galones <= 0) return null;
+  return validos.reduce((total, vale) => total + Number(vale.km_consumidos), 0) / galones;
 }
 
 // Rendimiento de la FLOTA en un periodo: se calcula por unidad y se omiten las que no
@@ -88,9 +89,10 @@ export function rendimientoFlota(vales) {
   let km = 0;
   let galones = 0;
   for (const valesUnidad of porUnidad.values()) {
-    if (rendimientoPeriodo(valesUnidad) == null) continue;
-    km += valesUnidad.reduce((total, vale) => total + vale.km_consumidos, 0);
-    galones += valesUnidad.reduce((total, vale) => total + Number(vale.galones), 0);
+    const validos = valesUnidad.filter(vale => vale.km_consumidos != null && Number(vale.galones) > 0);
+    if (validos.length === 0) continue;
+    km += validos.reduce((total, vale) => total + Number(vale.km_consumidos), 0);
+    galones += validos.reduce((total, vale) => total + Number(vale.galones), 0);
   }
   return galones > 0 ? km / galones : null;
 }
