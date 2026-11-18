@@ -10,3 +10,10 @@ publish/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Configuración con secretos (nunca al repo: es público)
+appsettings.Production.json
+appsettings.Local.json
+appsettings.*.local.json
+*.secrets.json
+.env
