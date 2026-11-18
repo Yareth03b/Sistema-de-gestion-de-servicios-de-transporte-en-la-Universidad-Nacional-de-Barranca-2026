@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace TransporteUnab.Api.Models;
 
@@ -21,7 +22,7 @@ public class Usuario
     [Required, MaxLength(256)] public string contrasenia { get; set; } = string.Empty;
     public bool activo { get; set; } = true;
 
-    [ForeignKey(nameof(id_rol))] public Rol? Rol { get; set; }
+    [ForeignKey(nameof(id_rol)), JsonIgnore] public Rol? Rol { get; set; }
 }
 
 [Table("UnidadTransporte")]
@@ -50,7 +51,7 @@ public class Conductor
     [MaxLength(15)] public string? brevete { get; set; }
     public bool activo { get; set; } = true;
 
-    [ForeignKey(nameof(id_unidad))] public UnidadTransporte? Unidad { get; set; }
+    [ForeignKey(nameof(id_unidad)), JsonIgnore] public UnidadTransporte? Unidad { get; set; }
 }
 
 [Table("AreaSolicitante")]
@@ -84,8 +85,8 @@ public class BitacoraTurno
     public int km_recorridos { get; private set; }
     [MaxLength(300)] public string? observaciones { get; set; }
 
-    [ForeignKey(nameof(id_unidad))] public UnidadTransporte? Unidad { get; set; }
-    [ForeignKey(nameof(id_conductor))] public Conductor? Conductor { get; set; }
+    [ForeignKey(nameof(id_unidad)), JsonIgnore] public UnidadTransporte? Unidad { get; set; }
+    [ForeignKey(nameof(id_conductor)), JsonIgnore] public Conductor? Conductor { get; set; }
 }
 
 [Table("TurnoRuta")]
@@ -95,8 +96,8 @@ public class TurnoRuta
     public int id_turno { get; set; }
     public int id_ruta { get; set; }
 
-    [ForeignKey(nameof(id_turno))] public BitacoraTurno? Turno { get; set; }
-    [ForeignKey(nameof(id_ruta))] public Ruta? Ruta { get; set; }
+    [ForeignKey(nameof(id_turno)), JsonIgnore] public BitacoraTurno? Turno { get; set; }
+    [ForeignKey(nameof(id_ruta)), JsonIgnore] public Ruta? Ruta { get; set; }
 }
 
 [Table("Abastecimiento")]
@@ -113,9 +114,9 @@ public class Abastecimiento
     [Required, MaxLength(20)] public string tipo_combustible { get; set; } = string.Empty;
     [MaxLength(300)] public string? observaciones { get; set; }
 
-    [ForeignKey(nameof(id_unidad))] public UnidadTransporte? Unidad { get; set; }
-    [ForeignKey(nameof(id_conductor))] public Conductor? Conductor { get; set; }
-    [ForeignKey(nameof(id_area))] public AreaSolicitante? Area { get; set; }
+    [ForeignKey(nameof(id_unidad)), JsonIgnore] public UnidadTransporte? Unidad { get; set; }
+    [ForeignKey(nameof(id_conductor)), JsonIgnore] public Conductor? Conductor { get; set; }
+    [ForeignKey(nameof(id_area)), JsonIgnore] public AreaSolicitante? Area { get; set; }
 }
 
 [Table("CierreTrimestral")]
