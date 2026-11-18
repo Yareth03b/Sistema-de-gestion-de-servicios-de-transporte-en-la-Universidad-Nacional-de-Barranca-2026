@@ -8,6 +8,11 @@ on:
       - '.github/workflows/deploy-api.yml'
   workflow_dispatch:
 
+# Un despliegue a la vez: dos pushes seguidos no deben subir por FTP en paralelo.
+concurrency:
+  group: deploy-api-produccion
+  cancel-in-progress: false
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
