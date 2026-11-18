@@ -102,8 +102,9 @@ public class TurnosController : ControllerBase
         var idsRuta = await Validar(dto, turno, id);
         Asignar(turno, dto);
 
-        // Solo se reemplazan las rutas si el cliente las envía.
-        if (dto.id_ruta is not null || dto.id_rutas is not null)
+        // Solo se reemplazan las rutas si el cliente envía rutas nuevas: id_rutas (aunque sea [])
+        // o un id_ruta > 0. id_ruta 0/null en un PUT = no cambiar (la web deshabilita el selector al editar).
+        if (ReemplazaRutas(dto, esNuevo: false))
         {
             _db.TurnoRutas.RemoveRange(_db.TurnoRutas.Where(x => x.id_turno == id));
             foreach (var idRuta in idsRuta)
@@ -151,9 +152,12 @@ public class TurnosController : ControllerBase
         await Reglas.V03KmTurno(_db, dto.id_unidad, fecha, salida, dto.km_inicial, dto.km_final, idTurno);
 
         // id_rutas (varias) tiene prioridad sobre id_ruta (una). Un turno puede repetir una ruta.
-        var idsRuta = dto.id_rutas is not null
-            ? dto.id_rutas.Where(x => x > 0).ToList()
-            : dto.id_ruta is > 0 ? new List<int> { dto.id_ruta.Value } : new List<int>();
+        // Al editar sin enviar rutas nuevas, V-02 se revisa con las rutas que ya tiene el turno.
+        var idsRuta = ReemplazaRutas(dto, esNuevo: idTurno is null)
+            ? dto.id_rutas is not null
+                ? dto.id_rutas.Where(x => x > 0).ToList()
+                : dto.id_ruta is > 0 ? new List<int> { dto.id_ruta.Value } : new List<int>()
+            : await _db.TurnoRutas.Where(tr => tr.id_turno == idTurno).Select(tr => tr.id_ruta).ToListAsync();
         if (idsRuta.Count > 0)
         {
             var distintas = idsRuta.Distinct().ToList();
@@ -164,6 +168,9 @@ public class TurnosController : ControllerBase
         await Reglas.V02KmRutas(_db, _op, dto.km_final - dto.km_inicial, idsRuta);
         return idsRuta;
     }
+
+    private static bool ReemplazaRutas(TurnoDto dto, bool esNuevo)
+        => esNuevo || dto.id_rutas is not null || dto.id_ruta is > 0;
 
     private static void Asignar(BitacoraTurno t, TurnoDto dto)
     {

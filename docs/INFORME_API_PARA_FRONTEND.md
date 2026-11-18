@@ -24,7 +24,7 @@ Todas las respuestas de error tienen la forma:
 |---|---|---|
 | `GET /combustible` | `km_consumidos` y `rendimiento` ahora se calculan (antes siempre `0`). Son `null` en el primer vale de cada unidad. Nuevo `rendimiento_sospechoso` (bool, V-09; `false` mientras no haya rangos). | Mostrar «—» cuando sean `null` (hoy `formatNumber` muestra `0`). |
 | `GET /turnos` | Nuevos `id_ruta` (primera ruta) e `id_rutas` (todas). `ruta_texto` une todas las rutas con «, ». Orden: fecha y hora de salida descendentes. | El formulario de edición ya usa `existing.id_ruta`: ahora sí preselecciona la ruta. |
-| `POST/PUT /turnos` | `id_ruta` acepta `0`/`null` (sin ruta). Opcional `id_rutas: [..]` para varias rutas. El `PUT` ahora sí actualiza la ruta. | Nada obligatorio. |
+| `POST/PUT /turnos` | `POST`: `id_ruta` 0/`null` = sin ruta. `PUT`: `id_ruta` 0/`null` = **no cambiar** la ruta; `id_ruta > 0` la reemplaza; `id_rutas: []` la quita. Opcional `id_rutas: [..]` para varias rutas. | Nada obligatorio. |
 | `DELETE /turnos/{id}` | Devuelve `405`: no hay anulación de turnos (decisión 12). | `api.deleteTurno` no debe usarse (hoy no hay botón). |
 | `GET /unidades` | Nuevo `numero_bus` (últimos 3 dígitos de la placa, `null` si no hay 3). `km_actual` = mayor km entre bitácora y vales (antes solo bitácora). `?incluir_inactivas=true` para ver las dadas de baja. | Puede mostrar `numero_bus`. |
 | `DELETE /unidades/{id}` | **Nuevo.** Baja lógica (`activo=0`; si estaba «Operativo» pasa a «Inactivo», V-14). | Botón «Dar de baja». |
@@ -69,7 +69,34 @@ Todas las respuestas de error tienen la forma:
 6. Las opciones de `estado` («Operativo», «En mantenimiento», «Inactivo») y `tipo` («Bus», «Camioneta», «Minivan»)
    están fijas en la web y aún no las ha definido el cliente (decisión abierta).
 
-## 5. Pendientes de seguridad (fuera de alcance, solo anotados)
+## 5. Revisión del PR #2 (`fix/frontend-api-publicada`) contra esta API
+
+Las 25 funciones de `js/api.js` (29 combinaciones de verbo y ruta) existen con el verbo y la ruta correctos, y los nombres de campo coinciden.
+Fechas (`yyyy-MM-dd`, `datetime-local`), horas (`HH:mm`) y números se envían en el formato que la API acepta.
+Lo que no coincide:
+
+| # | Dónde | Problema | Quién lo corrige |
+|---|---|---|---|
+| 1 | `turnos.js`: selector de ruta `disabled` al editar | `FormData` no envía los campos deshabilitados → llega `id_ruta: 0` y el `PUT` borraba la ruta del turno. | **API (corregido):** en `PUT`, `id_ruta` 0 = no cambiar. |
+| 2 | `validaciones.js` `validarRegistro` | Exige `conductor.id_unidad === id_unidad` para **todas** las unidades. Para unidades que no son bus la regla es la contraria (S-07: conductor sin bus asignado), así que la web impide registrar vales de camionetas y minivans. | **Web:** si la unidad no es bus, exigir `conductor.id_unidad == null`. |
+| 3 | `validaciones.js` | Revisa V-10/V-13 también al editar registros antiguos sin cambiar unidad ni conductor; la API no (para poder corregir el historial tras reasignar conductores). | **Web:** revisar solo si cambió `id_unidad` o `id_conductor`, o en altas. |
+| 4 | `validaciones.js` (km) | Compara con turnos y vales del **mismo día** sin mirar la hora: bloquea registrar un turno de la mañana si ya existe el de la tarde. La API compara turnos del mismo día por `hora_salida` e ignora vales del mismo día. | **Web:** comparar solo fechas anteriores, o dejar que la API valide (V-03 devuelve el mensaje). |
+| 5 | `conductores.js` selector «Unidad asignada» | Ofrece todas las unidades; la API rechaza asignar conductores a unidades que no son bus (decisión 2). | **Web:** listar solo `tipo` que empiece con «Bus». |
+| 6 | Selectores de unidad en `turnos.js`, `mantenimiento.js`, `estimacion.js` y botones «+ Documento»/«+ Nuevo incidente» del historial | Ofrecen camionetas y minivans; la API responde 400 (solo buses, decisión 1/S-01). | **Web:** filtrar buses u ocultar los botones si la unidad no es bus. |
+| 7 | `estimacion.js` «Ruta sugerida» | Copia `km_referencia` (un tramo) en `distancia_km`, pero el costo usa distancia **ida y vuelta**: el presupuesto sale a la mitad. | **Web:** usar `km_referencia × 2` o rotular el campo como «solo ida» y duplicar. |
+| 8 | `api.js` `getAbastecimientos` | Recalcula `km_consumidos`/`rendimiento` y pisa los valores de la API (ordena solo por km, sin redondeo). Da lo mismo en datos válidos, pero duplica la regla. | **Web:** usar los valores de la API y borrar el recálculo. |
+| 9 | `api.js` `getConciliacion` | Pide `/combustible` para recalcular `galones_sistema`; la API ya lo da por trimestre y trae `diferencia`. | **Web:** usar `galones_sistema` y `diferencia` de la API (una petición menos). |
+| 10 | `utils.js` `rendimientoPeriodo` | Si el primer vale del periodo no tiene vale anterior, suma sus galones pero cuenta sus km como 0: el rendimiento sale bajo. La fórmula acordada da `null` en ese caso. | **Web:** devolver `null` si algún vale del periodo tiene `km_consumidos == null`. |
+| 11 | `validaciones.js` `confirmarPeriodo` y botón «Actualizar» de Reportes | El aviso dice que el cierre «requiere actualización», pero la API ya lo recalcula sola (cabecera `X-Cierres-Recalculados`). No hay botón que llame a `POST /reportes/actualizar-cierre`. | **Web:** cambiar el texto («se recalculará el cierre») y conectar «Actualizar cierre». |
+| 12 | `unidades.js` número de bus | Usa `/\d{3}$/`: para `4521-EA` no muestra nada; la API da `numero_bus = "521"`. | **Web:** usar `u.numero_bus`. |
+| 13 | `config.js` `REQUEST_TIMEOUT_MS: 6000` | MonsterASP tarda más de 6 s en el primer arranque; la web dirá «No se pudo conectar». | **Web:** subir a 15–20 s. |
+| 14 | `api.js` `request` | Muestra un toast con cada error **y** lo lanza; varios formularios también lo pintan: el mensaje sale dos veces. | **Web** (cosmético). |
+
+Sin cambios necesarios: login/logout (`id_sesion`, `nombre_completo`, `rol`), health (`database: "connected"`),
+`PUT /unidades` con `id_usuario` de la sesión, `capacidad: 0` (la API la guarda como `null`), tipos de documento
+(«Tarjeta de Propiedad» cabe en VARCHAR(20)) y el respaldo de `mantenimiento.js` (ya no hace falta: `GET /mantenimiento` dejó de dar 500).
+
+## 6. Pendientes de seguridad (fuera de alcance, solo anotados)
 
 - Contraseñas en texto plano y comparación sensible a la collation `CI` (no distingue mayúsculas).
 - Sin JWT/autorización: todos los endpoints son públicos.
