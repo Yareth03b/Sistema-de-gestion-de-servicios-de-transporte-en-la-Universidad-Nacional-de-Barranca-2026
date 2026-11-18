@@ -1,10 +1,12 @@
+import { validarRegistro, confirmarPeriodo } from '../validaciones.js';
+import { CONFIG } from '../config.js';
 import { api } from '../api.js';
-import { formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
 
 export async function renderTurnos(container, searchQuery = '') {
   const [turnos, unidades, conductores, rutas] = await Promise.all([
     api.getTurnos(),
-    api.getUnidades(),
+    api.getUnidades(true),
     api.getConductores(),
     api.getRutasYCostos().then((r) => r.rutas),
   ]);
@@ -12,6 +14,9 @@ export async function renderTurnos(container, searchQuery = '') {
   let filterBus = 'all';
   let filterText = searchQuery;
 
+  const abasts = await api.getAbastecimientos();
+  let periodo = '';
+  const meses = [...new Set(turnos.map(r => r.fecha.slice(0, 7)))].sort().reverse();
   const paint = () => {
     const filtered = turnos.filter((t) => {
       const matchBus = filterBus === 'all' || String(t.id_unidad) === filterBus;
@@ -20,17 +25,19 @@ export async function renderTurnos(container, searchQuery = '') {
         t.placa.toLowerCase().includes(q) ||
         t.conductor.toLowerCase().includes(q) ||
         (t.ruta_texto || '').toLowerCase().includes(q);
-      return matchBus && matchText;
+      return (!periodo || t.fecha.startsWith(periodo)) && matchBus && matchText;
     });
+
+    if (!container.isConnected) return;
 
     container.innerHTML = `
       <section class="card">
         <div class="filters-bar">
           <div class="field-group">
             <label class="field-label" for="turno-periodo">Periodo</label>
-            <select id="turno-periodo" class="select">
-              <option value="2026-11">Noviembre 2026</option>
-              <option value="all">Todos los periodos</option>
+            <select id="filtro-periodo" class="select">
+              <option value="">Todos los periodos</option>
+              ${meses.map(m => `<option ${m === periodo ? 'selected' : ''}>${m}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
@@ -84,6 +91,7 @@ export async function renderTurnos(container, searchQuery = '') {
       </section>
     `;
 
+    document.getElementById('filtro-periodo').onchange = e => { periodo = e.target.value; paint(); };
     document.getElementById('turno-bus').addEventListener('change', (e) => {
       filterBus = e.target.value;
       paint();
@@ -91,6 +99,7 @@ export async function renderTurnos(container, searchQuery = '') {
     document.getElementById('turno-search').addEventListener('input', (e) => {
       filterText = e.target.value;
       paint();
+      document.getElementById('turno-search').focus();
     });
     container.querySelectorAll('[data-edit-turno]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -101,11 +110,11 @@ export async function renderTurnos(container, searchQuery = '') {
   };
 
   const openTurnoModal = (existing = null) => {
-    if (!unidades.length || !conductores.length) {
-      showToast('Primero registra al menos una unidad y un conductor.', 'error');
+    if (!existing && (!unidades.some(u => esBus(u) && u.activo) || !conductores.some(c => c.activo))) {
+      showToast('Primero registra al menos un bus y un conductor activos.', 'error');
       return;
     }
-    const today = new Date().toISOString().slice(0, 10);
+    const today = CONFIG.REFERENCE_DATE;
     openModal({
       title: existing ? 'Editar turno' : 'Nuevo turno',
       bodyHtml: `
@@ -113,24 +122,25 @@ export async function renderTurnos(container, searchQuery = '') {
           <div class="field-group">
             <label class="field-label">Unidad</label>
             <select name="id_unidad" class="select" required>
-              ${unidades.map((u) => `<option value="${u.id_unidad}" ${existing?.id_unidad === u.id_unidad ? 'selected' : ''}>${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
+              ${unidades.filter(u => (u.activo && esBus(u)) || u.id_unidad === existing?.id_unidad).map((u) => `<option value="${u.id_unidad}" ${existing?.id_unidad === u.id_unidad ? 'selected' : ''}>${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
             <label class="field-label">Conductor</label>
             <select name="id_conductor" class="select" required>
-              ${conductores.map((c) => `<option value="${c.id_conductor}" ${existing?.id_conductor === c.id_conductor ? 'selected' : ''}>${escapeHtml(c.nombres)} ${escapeHtml(c.apellidos)}</option>`).join('')}
+              ${conductores.filter(c => c.activo || c.id_conductor === existing?.id_conductor).map((c) => `<option value="${c.id_conductor}" ${existing?.id_conductor === c.id_conductor ? 'selected' : ''}>${escapeHtml(c.nombres)} ${escapeHtml(c.apellidos)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
             <label class="field-label">Fecha</label>
-            <input name="fecha" type="date" class="input" value="${existing?.fecha || today}" required />
+            <input name="fecha" type="date" class="input" max="${today}" value="${existing?.fecha?.slice(0, 10) || today}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Ruta</label>
-            <select name="id_ruta" class="select">
+            <select name="id_ruta" class="select" ${existing && !Array.isArray(existing.id_rutas) ? 'disabled' : ''}>
+              ${existing ? `<option value="conservar" selected>Conservar: ${escapeHtml(existing.ruta_texto)}</option>` : ''}
               <option value="0">Sin ruta de referencia</option>
-              ${rutas.map((r) => `<option value="${r.id_ruta}" ${existing?.id_ruta === r.id_ruta ? 'selected' : ''}>${escapeHtml(r.punto_salida)} ↔ ${escapeHtml(r.punto_llegada)} (${r.km_referencia} km)</option>`).join('')}
+              ${rutas.map((r) => `<option value="${r.id_ruta}" >${escapeHtml(r.punto_salida)} ↔ ${escapeHtml(r.punto_llegada)} (${r.km_referencia} km)</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
@@ -166,7 +176,6 @@ export async function renderTurnos(container, searchQuery = '') {
           const payload = {
             id_unidad: Number(fd.get('id_unidad')),
             id_conductor: Number(fd.get('id_conductor')),
-            id_ruta: Number(fd.get('id_ruta')),
             fecha: fd.get('fecha'),
             hora_salida: fd.get('hora_salida'),
             hora_llegada: fd.get('hora_llegada'),
@@ -175,10 +184,17 @@ export async function renderTurnos(container, searchQuery = '') {
             observaciones: fd.get('observaciones'),
           };
           try {
+            const ruta = fd.get('id_ruta');
+            if (existing && ruta === '0') payload.id_rutas = [];
+            else if (ruta && ruta !== 'conservar') payload.id_ruta = Number(ruta);
+            validarRegistro(payload, existing, unidades, conductores, turnos, abasts);
+            if (payload.km_final <= payload.km_inicial) throw new Error('El km final debe superar el inicial.');
+            if (payload.hora_llegada <= payload.hora_salida) throw new Error('La llegada debe ser posterior a la salida.');
+            if (!await confirmarPeriodo(payload.fecha, existing?.fecha)) return;
             await api.saveTurno(payload, existing?.id_turno || null);
             showToast(existing ? 'Turno actualizado.' : 'Turno registrado en bitácora.', 'success');
             close();
-            renderTurnos(container, filterText);
+            container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
           } catch (err) {
             const errEl = document.getElementById('turno-err');
             errEl.textContent = err.message;

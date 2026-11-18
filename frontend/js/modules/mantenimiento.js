@@ -1,8 +1,18 @@
+import { CONFIG } from '../config.js';
 import { api } from '../api.js';
-import { formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
 
 export async function renderMantenimiento(container, searchQuery = '') {
-  const [mants, unidades] = await Promise.all([api.getMantenimientos(), api.getUnidades()]);
+  let aviso = '';
+  let [mants, unidades] = await Promise.all([
+    api.getMantenimientos().catch(err => { aviso = err.message; return null; }),
+    api.getUnidades(),
+  ]);
+  if (!mants) {
+    const historiales = await Promise.all(unidades.map(u => api.getUnidadHistorial(u.id_unidad)));
+    mants = historiales.flatMap(h => h.mantenimientos.map(m => ({ ...m, placa: h.unidad.placa })))
+      .sort((a, b) => b.fecha.localeCompare(a.fecha));
+  }
   let filterTipo = 'all';
 
   const paint = () => {
@@ -13,7 +23,10 @@ export async function renderMantenimiento(container, searchQuery = '') {
       return mT && mQ;
     });
 
+    if (!container.isConnected) return;
+
     container.innerHTML = `
+      ${aviso ? `<p role="alert">Listado general no disponible. Se muestran los historiales de las unidades activas. ${escapeHtml(aviso)}</p>` : ''}
       <section class="card">
         <div class="filters-bar">
           <div class="field-group">
@@ -21,6 +34,7 @@ export async function renderMantenimiento(container, searchQuery = '') {
             <select id="mant-tipo" class="select">
               <option value="all">Todos</option>
               <option value="Preventivo" ${filterTipo === 'Preventivo' ? 'selected' : ''}>Preventivo</option>
+              <option value="Predictivo" ${filterTipo === 'Predictivo' ? 'selected' : ''}>Predictivo</option>
               <option value="Correctivo" ${filterTipo === 'Correctivo' ? 'selected' : ''}>Correctivo</option>
             </select>
           </div>
@@ -45,7 +59,7 @@ export async function renderMantenimiento(container, searchQuery = '') {
                   <td class="num-right">${formatSpaceInt(m.km)} km</td>
                   <td>${escapeHtml(m.detalle || '-')}</td>
                 </tr>
-              `).join('')}
+              `).join('') || '<tr><td colspan="5">Sin registros para mostrar.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -60,11 +74,11 @@ export async function renderMantenimiento(container, searchQuery = '') {
   };
 
   const openNuevoModal = () => {
-    if (!unidades.length) {
-      showToast('Primero registra al menos una unidad.', 'error');
+    if (!unidades.some(esBus)) {
+      showToast('Primero registra al menos un bus.', 'error');
       return;
     }
-    const today = new Date().toISOString().slice(0, 10);
+    const today = CONFIG.REFERENCE_DATE;
     openModal({
       title: 'Nuevo mantenimiento',
       bodyHtml: `
@@ -72,19 +86,20 @@ export async function renderMantenimiento(container, searchQuery = '') {
           <div class="field-group">
             <label class="field-label">Unidad</label>
             <select name="id_unidad" class="select" required>
-              ${unidades.map((u) => `<option value="${u.id_unidad}">${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
+              ${unidades.filter(esBus).map((u) => `<option value="${u.id_unidad}">${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
             <label class="field-label">Tipo</label>
             <select name="tipo" class="select" required>
               <option value="Preventivo">Preventivo</option>
+              <option value="Predictivo">Predictivo</option>
               <option value="Correctivo">Correctivo</option>
             </select>
           </div>
           <div class="field-group">
             <label class="field-label">Fecha</label>
-            <input name="fecha" type="date" class="input" value="${today}" required />
+            <input name="fecha" type="date" class="input" max="${today}" value="${today}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Kilometraje</label>
@@ -103,16 +118,21 @@ export async function renderMantenimiento(container, searchQuery = '') {
         document.getElementById('mant-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const fd = new FormData(e.target);
-          await api.saveMantenimiento({
-            id_unidad: Number(fd.get('id_unidad')),
-            tipo: fd.get('tipo'),
-            fecha: fd.get('fecha'),
-            km: Number(fd.get('km')),
-            detalle: fd.get('detalle').trim(),
-          });
+          try {
+            await api.saveMantenimiento({
+              id_unidad: Number(fd.get('id_unidad')),
+              tipo: fd.get('tipo'),
+              fecha: fd.get('fecha'),
+              km: Number(fd.get('km')),
+              detalle: fd.get('detalle').trim(),
+            });
+          } catch (err) {
+            showToast(err.message, 'error');
+            return;
+          }
           showToast('Mantenimiento registrado.', 'success');
           close();
-          renderMantenimiento(container, searchQuery);
+          container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
         });
       },
     });

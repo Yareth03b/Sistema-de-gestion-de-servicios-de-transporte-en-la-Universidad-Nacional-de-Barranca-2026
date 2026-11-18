@@ -55,7 +55,12 @@ export function initAuth(onLoginSuccess, onLogout) {
 
   logoutBtn.addEventListener('click', async () => {
     const session = getSession();
-    if (session?.id_sesion) await api.logout(session.id_sesion);
+    try {
+      if (session?.id_sesion) await api.logout(session.id_sesion);
+    } catch (err) {
+      showToast(err.message, 'error');
+      return;
+    }
     clearSession();
     onLogout();
   });
