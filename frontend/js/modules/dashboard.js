@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { CONFIG } from '../config.js';
 
-import { esBus, rendimientoPeriodo, formatNumber, formatSpaceInt, formatDateES, escapeHtml } from '../utils.js';
+import { esBus, rendimientoPeriodo, rendimientoFlota, formatNumber, formatSpaceInt, formatDateES, escapeHtml } from '../utils.js';
 
 export async function renderDashboard(container, navigate) {
   let mantenimientoError = '';
@@ -21,7 +21,7 @@ export async function renderDashboard(container, navigate) {
 
   const kmMes = turnos.reduce((s, t) => s + Number(t.km_recorridos || (t.km_final - t.km_inicial)), 0);
   const galMes = abasts.reduce((s, a) => s + Number(a.galones), 0);
-  const rendProm = rendimientoPeriodo(abasts);
+  const rendProm = rendimientoFlota(abasts);
   const buses = unidades.filter((u) => u.activo !== false && esBus(u));
   const busesOperativosHoy = buses.filter((u) => (u.estado || '') === 'Operativo').length;
 
