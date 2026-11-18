@@ -31,8 +31,13 @@ async function request(path, options = {}) {
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       const detail = Object.values(body.errors || {}).flat().join(' ');
-      throw new Error(body.message || detail || body.title || `HTTP ${res.status} (${path})`);
+      const err = new Error([body.message, detail].filter(Boolean).join(" ") || body.title || `HTTP ${res.status} (${path})`);
+      err.status = res.status;
+      err.codigo = body.codigo ?? null;
+      throw err;
     }
+    const cierres = res.headers.get('X-Cierres-Recalculados');
+    if (cierres) showToast('Cierres recalculados: ' + cierres, 'success');
     const body = await res.text();
     return body ? JSON.parse(body) : null;
   } catch (err) {
@@ -40,7 +45,6 @@ async function request(path, options = {}) {
       setApiStatus(false);
       err = new Error('No se pudo conectar con la API. Vuelve a intentarlo.');
     }
-    showToast(err.message, 'error');
     throw err;
   } finally {
     clearTimeout(timer);
@@ -85,6 +89,8 @@ export const api = {
   // --- Combustible ---
   async getAbastecimientos() {
     const vales = await request('/combustible');
+    if (vales.every(v => "rendimiento_sospechoso" in v)) return vales;
+    // Compatibilidad con la versión publicada antes del PR #3.
     const anteriores = new Map();
     for (const vale of [...vales].sort((a, b) => a.km_actual - b.km_actual || a.id_abastecimiento - b.id_abastecimiento)) {
       const anterior = anteriores.get(vale.id_unidad);
@@ -103,8 +109,12 @@ export const api = {
   },
 
   // --- Unidades ---
-  async getUnidades() {
-    return request('/unidades');
+  async getUnidades(incluirInactivas = false) {
+    return request(incluirInactivas ? '/unidades?incluir_inactivas=true' : '/unidades');
+  },
+
+  async bajaUnidad(id) {
+    return request('/unidades/' + id, { method: 'DELETE' });
   },
 
   async saveUnidad(payload, id = null) {
@@ -143,6 +153,10 @@ export const api = {
     return request('/conductores');
   },
 
+  async bajaConductor(id) {
+    return request('/conductores/' + id, { method: 'DELETE' });
+  },
+
   async saveConductor(payload, id = null) {
     return request(id ? `/conductores/${id}` : '/conductores', {
       method: id ? 'PUT' : 'POST',
@@ -168,6 +182,10 @@ export const api = {
     return request('/reportes/trimestral');
   },
 
+  async actualizarCierre(anio, trimestre) {
+    return request('/reportes/actualizar-cierre', { method: 'POST', body: JSON.stringify({ anio, trimestre }) });
+  },
+
   async cerrarTrimestre(anio, trimestre) {
     return request('/reportes/cerrar-trimestre', {
       method: 'POST',
@@ -176,7 +194,9 @@ export const api = {
   },
 
   async getConciliacion() {
-    const [reportes, vales] = await Promise.all([request('/conciliacion'), request('/combustible')]);
+    const reportes = await request('/conciliacion');
+    if (reportes.every(r => 'diferencia' in r)) return reportes;
+    const vales = await request('/combustible');
     return reportes.map(r => ({
       ...r,
       galones_sistema: vales.filter(v => Number(v.fecha.slice(0, 4)) === r.anio &&

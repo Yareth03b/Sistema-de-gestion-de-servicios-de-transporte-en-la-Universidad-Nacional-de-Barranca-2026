@@ -64,8 +64,12 @@ export function openModal({ title, bodyHtml, onMount }) {
   return close;
 }
 
+export function esBus(u) {
+  return u?.tipo?.trim().toLowerCase().startsWith('bus') ?? false;
+}
+
 export function rendimientoPeriodo(vales) {
   const galones = vales.reduce((total, vale) => total + vale.galones, 0);
-  if (galones <= 0 || !vales.some(vale => vale.km_consumidos != null)) return null;
+  if (galones <= 0 || vales.some(vale => vale.km_consumidos == null)) return null;
   return vales.reduce((total, vale) => total + (vale.km_consumidos ?? 0), 0) / galones;
 }

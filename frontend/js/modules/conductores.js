@@ -1,8 +1,8 @@
 import { api } from '../api.js';
-import { openModal, showToast, escapeHtml } from '../utils.js';
+import { esBus, openModal, showToast, escapeHtml } from '../utils.js';
 
 export async function renderConductores(container, searchQuery = '') {
-  const [conductores, unidades] = await Promise.all([api.getConductores(), api.getUnidades()]);
+  const [conductores, unidades] = await Promise.all([api.getConductores(), api.getUnidades(true)]);
 
   const paint = () => {
     const q = searchQuery.trim().toLowerCase();
@@ -34,7 +34,8 @@ export async function renderConductores(container, searchQuery = '') {
                   <td>${escapeHtml(c.brevete || '-')}</td>
                   <td><span class="plate-badge">${escapeHtml(c.placa)}</span></td>
                   <td><span class="pill ${c.activo ? 'pill-success' : 'pill-ok'}">${c.activo ? 'Activo' : 'Inactivo'}</span></td>
-                  <td><button class="btn-link" data-edit-cond="${c.id_conductor}">Editar</button></td>
+                  <td><button class="btn-link" data-edit-cond="${c.id_conductor}">Editar</button>
+                  ${c.activo && 'numero_bus' in c ? `<button type="button" class="btn-link" data-baja="${c.id_conductor}">Dar de baja</button>` : ''}</td>
                 </tr>
               `).join('') || '<tr><td colspan="6">Sin registros para mostrar.</td></tr>'}
             </tbody>
@@ -44,6 +45,19 @@ export async function renderConductores(container, searchQuery = '') {
       </section>
     `;
 
+    container.querySelectorAll('[data-baja]').forEach(btn => {
+      btn.onclick = async () => {
+        if (!window.confirm('¿Dar de baja este registro y conservar su historial?')) return;
+        btn.disabled = true;
+        try {
+          await api.bajaConductor(Number(btn.dataset.baja));
+          container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
+        } catch (err) {
+          showToast(err.message, 'error');
+          btn.disabled = false;
+        }
+      };
+    });
     container.querySelectorAll('[data-edit-cond]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const item = conductores.find((x) => x.id_conductor === Number(btn.dataset.editCond));
@@ -77,7 +91,7 @@ export async function renderConductores(container, searchQuery = '') {
             <label class="field-label">Unidad asignada</label>
             <select name="id_unidad" class="select">
               <option value="">Sin asignar</option>
-              ${unidades.map((u) => `<option value="${u.id_unidad}" ${existing?.id_unidad === u.id_unidad ? 'selected' : ''}>${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
+              ${unidades.filter(u => (esBus(u) && u.activo) || u.id_unidad === existing?.id_unidad).map((u) => `<option value="${u.id_unidad}" ${existing?.id_unidad === u.id_unidad ? 'selected' : ''}>${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
             </select>
           </div>
           <p id="cond-err" class="field-error hidden" style="grid-column:1/-1;"></p>

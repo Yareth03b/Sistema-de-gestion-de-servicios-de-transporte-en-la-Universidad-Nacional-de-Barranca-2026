@@ -6,7 +6,7 @@ import { formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escap
 export async function renderCombustible(container, searchQuery = '') {
   const [abasts, unidades, conductores, areasData] = await Promise.all([
     api.getAbastecimientos(),
-    api.getUnidades(),
+    api.getUnidades(true),
     api.getConductores(),
     api.getRutasYCostos(),
   ]);
@@ -107,7 +107,7 @@ export async function renderCombustible(container, searchQuery = '') {
   };
 
   const openValeModal = (existing = null) => {
-    if (!unidades.length || !conductores.length) {
+    if (!existing && (!unidades.some(u => u.activo) || !conductores.some(c => c.activo))) {
       showToast('Primero registra al menos una unidad y un conductor.', 'error');
       return;
     }
@@ -127,13 +127,13 @@ export async function renderCombustible(container, searchQuery = '') {
           <div class="field-group">
             <label class="field-label">Unidad</label>
             <select name="id_unidad" class="select" required>
-              ${unidades.map((u) => `<option value="${u.id_unidad}" ${existing?.id_unidad === u.id_unidad ? 'selected' : ''}>${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
+              ${unidades.filter(u => u.activo || u.id_unidad === existing?.id_unidad).map((u) => `<option value="${u.id_unidad}" ${existing?.id_unidad === u.id_unidad ? 'selected' : ''}>${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
             <label class="field-label">Conductor</label>
             <select name="id_conductor" class="select" required>
-              ${conductores.filter(c => c.activo).map((c) => `<option value="${c.id_conductor}" ${existing?.id_conductor === c.id_conductor ? 'selected' : ''}>${escapeHtml(c.nombres)} ${escapeHtml(c.apellidos)}</option>`).join('')}
+              ${conductores.filter(c => c.activo || c.id_conductor === existing?.id_conductor).map((c) => `<option value="${c.id_conductor}" ${existing?.id_conductor === c.id_conductor ? 'selected' : ''}>${escapeHtml(c.nombres)} ${escapeHtml(c.apellidos)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">

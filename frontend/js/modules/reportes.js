@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { rendimientoPeriodo, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
 
 export async function renderReportes(container) {
-  const [cierres, unidades, turnos, abasts] = await Promise.all([
+  let [cierres, unidades, turnos, abasts] = await Promise.all([
     api.getCierres(),
     api.getUnidades(),
     api.getTurnos(),
@@ -78,6 +78,7 @@ export async function renderReportes(container) {
             <div style="margin-bottom:24px;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
                 <strong>Año ${c.anio} · Trimestre ${c.trimestre}</strong>
+                <button class="btn btn-outline" data-actualizar-cierre="${c.id_cierre}">Actualizar cierre</button>
                 <span class="pill pill-ok">Cerrado el ${formatDateES(c.fecha_cierre)}</span>
               </div>
               <div class="table-wrap">
@@ -110,6 +111,20 @@ export async function renderReportes(container) {
       `}
     `;
 
+    container.querySelectorAll('[data-actualizar-cierre]').forEach(btn => {
+      btn.onclick = async () => {
+        const cierre = cierres.find(c => c.id_cierre === Number(btn.dataset.actualizarCierre));
+        btn.disabled = true;
+        try {
+          await api.actualizarCierre(cierre.anio, cierre.trimestre);
+          cierres = await api.getCierres();
+          paint();
+        } catch (err) {
+          showToast(err.message, 'error');
+          btn.disabled = false;
+        }
+      };
+    });
     container.querySelectorAll('[data-tab]').forEach((btn) => {
       btn.addEventListener('click', () => { activeTab = btn.dataset.tab; paint(); });
     });
@@ -123,7 +138,7 @@ export async function renderReportes(container) {
         title: 'Aviso de cierre trimestral',
         bodyHtml: `
           <p style="margin-bottom:16px;color:var(--text-secondary);">
-            Esta acción generará el corte oficial de kilometraje y combustible para el trimestre seleccionado y lo bloqueará para auditoría.
+            Esta acción generará el corte oficial de kilometraje y combustible para el trimestre seleccionado. Las correcciones posteriores pueden recalcular el cierre.
           </p>
           <form id="cierre-form" class="form-grid-2">
             <div class="field-group">

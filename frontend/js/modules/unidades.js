@@ -1,10 +1,10 @@
 import { CONFIG } from '../config.js';
 import { getSession } from './auth.js';
 import { api } from '../api.js';
-import { formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
 
 export async function renderUnidades(container, searchQuery = '') {
-  const unidades = await api.getUnidades();
+  const unidades = await api.getUnidades(true);
 
   const paintList = () => {
     const q = searchQuery.trim().toLowerCase();
@@ -34,15 +34,16 @@ export async function renderUnidades(container, searchQuery = '') {
               ${filtered.map((u) => `
                 <tr>
                   <td><span class="plate-badge">${escapeHtml(u.placa)}</span></td>
-                  <td>${escapeHtml(u.tipo)} ${u.tipo === 'Bus' ? (u.placa.match(/\d{3}$/)?.[0] || '') : ''}</td>
+                  <td>${escapeHtml(u.tipo)} ${esBus(u) ? escapeHtml('numero_bus' in u ? u.numero_bus : u.placa.replace(/\D/g, '').match(/\d{3}$/)?.[0]) : ''}</td>
                   <td>${escapeHtml(u.marca)} · ${escapeHtml(u.modelo)}</td>
                   <td>${escapeHtml(u.codigo_patrimonial || '-')}</td>
                   <td class="num-right">${u.capacidad || '-'}</td>
                   <td class="num-right">${formatSpaceInt(u.km_actual || 0)} km</td>
-                  <td><span class="pill ${u.estado === 'Operativo' ? 'pill-success' : 'pill-info'}">${escapeHtml(u.estado || 'Sin estado')}</span></td>
+                  <td><span class="pill ${u.estado === 'Operativo' ? 'pill-success' : 'pill-info'}">${escapeHtml(u.activo ? u.estado || 'Sin estado' : 'De baja')}</span></td>
                   <td style="white-space:nowrap;">
                     <button class="btn-link" data-hist-unidad="${u.id_unidad}">Ver historial</button>
                     <button class="btn-link" data-edit-unidad="${u.id_unidad}">Editar</button>
+                  ${u.activo && 'numero_bus' in u ? `<button type="button" class="btn-link" data-baja="${u.id_unidad}">Dar de baja</button>` : ''}
                   </td>
                 </tr>
               `).join('') || '<tr><td colspan="8">Sin registros para mostrar.</td></tr>'}
@@ -55,6 +56,19 @@ export async function renderUnidades(container, searchQuery = '') {
       </section>
     `;
 
+    container.querySelectorAll('[data-baja]').forEach(btn => {
+      btn.onclick = async () => {
+        if (!window.confirm('¿Dar de baja este registro y conservar su historial?')) return;
+        btn.disabled = true;
+        try {
+          await api.bajaUnidad(Number(btn.dataset.baja));
+          container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
+        } catch (err) {
+          showToast(err.message, 'error');
+          btn.disabled = false;
+        }
+      };
+    });
     container.querySelectorAll('[data-edit-unidad]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const u = unidades.find((x) => x.id_unidad === Number(btn.dataset.editUnidad));
@@ -71,7 +85,8 @@ export async function renderUnidades(container, searchQuery = '') {
     let hist;
     try {
       hist = await api.getUnidadHistorial(idUnidad);
-    } catch {
+    } catch (err) {
+      showToast(err.message, 'error');
       return;
     }
     const u = hist.unidad;
@@ -84,8 +99,8 @@ export async function renderUnidades(container, searchQuery = '') {
           <strong>${escapeHtml(u.marca)} ${escapeHtml(u.modelo)}</strong>
         </div>
         <div style="display:flex;gap:8px;">
-          <button id="btn-nuevo-doc" class="btn btn-outline btn-sm">+ Documento</button>
-          <button id="btn-nuevo-inc" class="btn btn-primary btn-sm">+ Nuevo incidente</button>
+          <button ${esBus(u) ? '' : 'disabled'} id="btn-nuevo-doc" class="btn btn-outline btn-sm">+ Documento</button>
+          <button ${esBus(u) ? '' : 'disabled'} id="btn-nuevo-inc" class="btn btn-primary btn-sm">+ Nuevo incidente</button>
         </div>
       </div>
 
@@ -118,6 +133,7 @@ export async function renderUnidades(container, searchQuery = '') {
                 <div>
                   <div class="alert-row-title">${formatDateES(inc.fecha)}</div>
                   <div class="alert-row-desc">${escapeHtml(inc.descripcion)}</div>
+                  <div>${escapeHtml(inc.conductor ?? 'Sin conductor identificado')}</div>
                 </div>
                 <button class="btn-link" data-edit-inc="${inc.id_incidente}">Editar</button>
               </div>
@@ -164,7 +180,7 @@ export async function renderUnidades(container, searchQuery = '') {
         <form id="inc-form" class="field-group" style="gap:14px;">
           <div class="field-group">
             <label class="field-label">Fecha y hora</label>
-            <input name="fecha" type="datetime-local" max="${CONFIG.REFERENCE_DATE}T${new Date().toTimeString().slice(0, 5)}" class="input" value="${existing?.fecha?.slice(0, 16) || CONFIG.REFERENCE_DATE + 'T00:00'}" required />
+            <input name="fecha" type="datetime-local" max="${CONFIG.REFERENCE_DATETIME}" class="input" value="${existing?.fecha?.slice(0, 16) || CONFIG.REFERENCE_DATETIME}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Descripción del incidente</label>
@@ -185,7 +201,8 @@ export async function renderUnidades(container, searchQuery = '') {
               fecha: fd.get('fecha'),
               descripcion: fd.get('descripcion').trim(),
             }, existing?.id_incidente || null);
-          } catch {
+          } catch (err) {
+            showToast(err.message, 'error');
             return;
           }
           showToast(existing ? 'Incidente actualizado.' : 'Incidente registrado.', 'success');
@@ -233,7 +250,8 @@ export async function renderUnidades(container, searchQuery = '') {
               numero: fd.get('numero').trim(),
               fecha_vencimiento: fd.get('fecha_vencimiento'),
             });
-          } catch {
+          } catch (err) {
+            showToast(err.message, 'error');
             return;
           }
           showToast('Documento registrado.', 'success');
@@ -256,7 +274,7 @@ export async function renderUnidades(container, searchQuery = '') {
           <div class="field-group">
             <label class="field-label">Tipo</label>
             <select name="tipo" class="select">
-              ${['Bus', 'Camioneta', 'Minivan'].map((t) => `<option value="${t}" ${existing?.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}
+              ${[...new Set(['Bus', 'Camioneta', 'Minivan', existing?.tipo].filter(Boolean))].map((t) => `<option value="${escapeHtml(t)}" ${existing?.tipo === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
@@ -273,12 +291,12 @@ export async function renderUnidades(container, searchQuery = '') {
           </div>
           <div class="field-group">
             <label class="field-label">Capacidad</label>
-            <input name="capacidad" type="number" class="input" value="${existing?.capacidad ?? 40}" />
+            <input name="capacidad" type="number" class="input" value="${existing ? existing.capacidad ?? '' : 40}" />
           </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Estado</label>
             <select name="estado" class="select">
-              ${['Operativo', 'En mantenimiento'].map((s) => `<option value="${s}" ${existing?.estado === s ? 'selected' : ''}>${s}</option>`).join('')}
+              ${[...new Set([existing ? existing.estado ?? '' : 'Operativo', 'Operativo', 'En mantenimiento'])].map((s) => `<option value="${escapeHtml(s)}" ${existing?.estado === s ? 'selected' : ''}>${escapeHtml(s || 'Sin estado')}</option>`).join('')}
             </select>
           </div>
           <p id="unidad-err" class="field-error hidden" style="grid-column:1/-1;"></p>
@@ -300,7 +318,7 @@ export async function renderUnidades(container, searchQuery = '') {
               marca: fd.get('marca').trim(),
               modelo: fd.get('modelo').trim(),
               codigo_patrimonial: fd.get('codigo_patrimonial').trim(),
-              capacidad: Number(fd.get('capacidad')),
+              capacidad: fd.get('capacidad') ? Number(fd.get('capacidad')) : null,
               estado: fd.get('estado'),
             }, existing?.id_unidad || null);
             showToast(existing ? 'Unidad actualizada.' : 'Unidad registrada.', 'success');

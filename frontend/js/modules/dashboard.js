@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { CONFIG } from '../config.js';
 
-import { rendimientoPeriodo, formatNumber, formatSpaceInt, formatDateES, escapeHtml } from '../utils.js';
+import { esBus, rendimientoPeriodo, formatNumber, formatSpaceInt, formatDateES, escapeHtml } from '../utils.js';
 
 export async function renderDashboard(container, navigate) {
   let mantenimientoError = '';
@@ -22,7 +22,7 @@ export async function renderDashboard(container, navigate) {
   const kmMes = turnos.reduce((s, t) => s + Number(t.km_recorridos || (t.km_final - t.km_inicial)), 0);
   const galMes = abasts.reduce((s, a) => s + Number(a.galones), 0);
   const rendProm = rendimientoPeriodo(abasts);
-  const buses = unidades.filter((u) => u.activo !== false && u.tipo === 'Bus');
+  const buses = unidades.filter((u) => u.activo !== false && esBus(u));
   const busesOperativosHoy = buses.filter((u) => (u.estado || '') === 'Operativo').length;
 
   // Alertas dinámicas de mantenimiento y documentos
@@ -97,7 +97,7 @@ export async function renderDashboard(container, navigate) {
   const rendUnidades = unidades.slice(0, 4).map((u) => {
     const vales = abasts.filter(a => a.id_unidad === u.id_unidad);
     const val = rendimientoPeriodo(vales);
-    if (val == null) return null;
+    if (val == null || rendProm == null) return null;
     return { placa: u.placa, val, diff: +(val - rendProm).toFixed(1) };
   }).filter(Boolean);
 

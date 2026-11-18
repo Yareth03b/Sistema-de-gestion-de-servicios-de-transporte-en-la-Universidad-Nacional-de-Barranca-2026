@@ -105,7 +105,8 @@ export async function renderRutas(container, searchQuery = '') {
               punto_llegada: fd.get('punto_llegada').trim(),
               km_referencia: Number(fd.get('km_referencia')),
             });
-          } catch {
+          } catch (err) {
+            showToast(err.message, 'error');
             return;
           }
           showToast('Ruta agregada.', 'success');
@@ -136,7 +137,8 @@ export async function renderRutas(container, searchQuery = '') {
           const fd = new FormData(e.target);
           try {
             await api.saveArea({ nombre: fd.get('nombre').trim() });
-          } catch {
+          } catch (err) {
+            showToast(err.message, 'error');
             return;
           }
           showToast('Área registrada.', 'success');

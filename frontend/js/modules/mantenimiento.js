@@ -1,6 +1,6 @@
 import { CONFIG } from '../config.js';
 import { api } from '../api.js';
-import { formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
 
 export async function renderMantenimiento(container, searchQuery = '') {
   let aviso = '';
@@ -34,6 +34,7 @@ export async function renderMantenimiento(container, searchQuery = '') {
             <select id="mant-tipo" class="select">
               <option value="all">Todos</option>
               <option value="Preventivo" ${filterTipo === 'Preventivo' ? 'selected' : ''}>Preventivo</option>
+              <option value="Predictivo" ${filterTipo === 'Predictivo' ? 'selected' : ''}>Predictivo</option>
               <option value="Correctivo" ${filterTipo === 'Correctivo' ? 'selected' : ''}>Correctivo</option>
             </select>
           </div>
@@ -73,8 +74,8 @@ export async function renderMantenimiento(container, searchQuery = '') {
   };
 
   const openNuevoModal = () => {
-    if (!unidades.length) {
-      showToast('Primero registra al menos una unidad.', 'error');
+    if (!unidades.some(esBus)) {
+      showToast('Primero registra al menos un bus.', 'error');
       return;
     }
     const today = CONFIG.REFERENCE_DATE;
@@ -85,13 +86,14 @@ export async function renderMantenimiento(container, searchQuery = '') {
           <div class="field-group">
             <label class="field-label">Unidad</label>
             <select name="id_unidad" class="select" required>
-              ${unidades.map((u) => `<option value="${u.id_unidad}">${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
+              ${unidades.filter(esBus).map((u) => `<option value="${u.id_unidad}">${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
             <label class="field-label">Tipo</label>
             <select name="tipo" class="select" required>
               <option value="Preventivo">Preventivo</option>
+              <option value="Predictivo">Predictivo</option>
               <option value="Correctivo">Correctivo</option>
             </select>
           </div>
@@ -124,7 +126,8 @@ export async function renderMantenimiento(container, searchQuery = '') {
               km: Number(fd.get('km')),
               detalle: fd.get('detalle').trim(),
             });
-          } catch {
+          } catch (err) {
+            showToast(err.message, 'error');
             return;
           }
           showToast('Mantenimiento registrado.', 'success');

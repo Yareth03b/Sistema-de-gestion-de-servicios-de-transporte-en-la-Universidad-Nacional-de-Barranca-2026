@@ -1,12 +1,12 @@
 import { validarRegistro, confirmarPeriodo } from '../validaciones.js';
 import { CONFIG } from '../config.js';
 import { api } from '../api.js';
-import { formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
 
 export async function renderTurnos(container, searchQuery = '') {
   const [turnos, unidades, conductores, rutas] = await Promise.all([
     api.getTurnos(),
-    api.getUnidades(),
+    api.getUnidades(true),
     api.getConductores(),
     api.getRutasYCostos().then((r) => r.rutas),
   ]);
@@ -110,8 +110,8 @@ export async function renderTurnos(container, searchQuery = '') {
   };
 
   const openTurnoModal = (existing = null) => {
-    if (!unidades.length || !conductores.length) {
-      showToast('Primero registra al menos una unidad y un conductor.', 'error');
+    if (!existing && (!unidades.some(u => esBus(u) && u.activo) || !conductores.some(c => c.activo))) {
+      showToast('Primero registra al menos un bus y un conductor activos.', 'error');
       return;
     }
     const today = CONFIG.REFERENCE_DATE;
@@ -122,13 +122,13 @@ export async function renderTurnos(container, searchQuery = '') {
           <div class="field-group">
             <label class="field-label">Unidad</label>
             <select name="id_unidad" class="select" required>
-              ${unidades.map((u) => `<option value="${u.id_unidad}" ${existing?.id_unidad === u.id_unidad ? 'selected' : ''}>${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
+              ${unidades.filter(u => (u.activo && esBus(u)) || u.id_unidad === existing?.id_unidad).map((u) => `<option value="${u.id_unidad}" ${existing?.id_unidad === u.id_unidad ? 'selected' : ''}>${escapeHtml(u.placa)} · ${escapeHtml(u.marca)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
             <label class="field-label">Conductor</label>
             <select name="id_conductor" class="select" required>
-              ${conductores.filter(c => c.activo).map((c) => `<option value="${c.id_conductor}" ${existing?.id_conductor === c.id_conductor ? 'selected' : ''}>${escapeHtml(c.nombres)} ${escapeHtml(c.apellidos)}</option>`).join('')}
+              ${conductores.filter(c => c.activo || c.id_conductor === existing?.id_conductor).map((c) => `<option value="${c.id_conductor}" ${existing?.id_conductor === c.id_conductor ? 'selected' : ''}>${escapeHtml(c.nombres)} ${escapeHtml(c.apellidos)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
@@ -137,9 +137,10 @@ export async function renderTurnos(container, searchQuery = '') {
           </div>
           <div class="field-group">
             <label class="field-label">Ruta</label>
-            <select name="id_ruta" class="select" ${existing ? 'disabled' : ''}>
-              <option value="0">${existing ? escapeHtml(existing.ruta_texto) : 'Sin ruta de referencia'}</option>
-              ${rutas.map((r) => `<option value="${r.id_ruta}" ${existing?.id_ruta === r.id_ruta ? 'selected' : ''}>${escapeHtml(r.punto_salida)} ↔ ${escapeHtml(r.punto_llegada)} (${r.km_referencia} km)</option>`).join('')}
+            <select name="id_ruta" class="select" ${existing && !Array.isArray(existing.id_rutas) ? 'disabled' : ''}>
+              ${existing ? `<option value="conservar" selected>Conservar: ${escapeHtml(existing.ruta_texto)}</option>` : ''}
+              <option value="0">Sin ruta de referencia</option>
+              ${rutas.map((r) => `<option value="${r.id_ruta}" >${escapeHtml(r.punto_salida)} ↔ ${escapeHtml(r.punto_llegada)} (${r.km_referencia} km)</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
@@ -175,7 +176,6 @@ export async function renderTurnos(container, searchQuery = '') {
           const payload = {
             id_unidad: Number(fd.get('id_unidad')),
             id_conductor: Number(fd.get('id_conductor')),
-            id_ruta: Number(fd.get('id_ruta')),
             fecha: fd.get('fecha'),
             hora_salida: fd.get('hora_salida'),
             hora_llegada: fd.get('hora_llegada'),
@@ -184,6 +184,9 @@ export async function renderTurnos(container, searchQuery = '') {
             observaciones: fd.get('observaciones'),
           };
           try {
+            const ruta = fd.get('id_ruta');
+            if (existing && ruta === '0') payload.id_rutas = [];
+            else if (ruta && ruta !== 'conservar') payload.id_ruta = Number(ruta);
             validarRegistro(payload, existing, unidades, conductores, turnos, abasts);
             if (payload.km_final <= payload.km_inicial) throw new Error('El km final debe superar el inicial.');
             if (payload.hora_llegada <= payload.hora_salida) throw new Error('La llegada debe ser posterior a la salida.');

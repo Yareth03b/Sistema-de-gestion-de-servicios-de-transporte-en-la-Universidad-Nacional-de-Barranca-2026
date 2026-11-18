@@ -57,7 +57,8 @@ export function initAuth(onLoginSuccess, onLogout) {
     const session = getSession();
     try {
       if (session?.id_sesion) await api.logout(session.id_sesion);
-    } catch {
+    } catch (err) {
+      showToast(err.message, 'error');
       return;
     }
     clearSession();

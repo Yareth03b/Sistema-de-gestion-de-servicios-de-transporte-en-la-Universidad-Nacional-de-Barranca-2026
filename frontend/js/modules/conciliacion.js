@@ -31,7 +31,7 @@ export async function renderConciliacion(container) {
             ${reportes.map((r) => {
               const sis = Number(r.galones_sistema || 0);
               const grifo = Number(r.galones_total || 0);
-              const diff = +(grifo - sis).toFixed(2);
+              const diff = r.diferencia ?? +(grifo - sis).toFixed(2);
               const ok = Math.abs(diff) <= 0.5;
               return `
                 <tr>
@@ -93,7 +93,8 @@ export async function renderConciliacion(container) {
               galones_total: Number(fd.get('galones_total')),
               observaciones: fd.get('observaciones').trim(),
             });
-          } catch {
+          } catch (err) {
+            showToast(err.message, 'error');
             return;
           }
           showToast('Reporte de grifo actualizado.', 'success');

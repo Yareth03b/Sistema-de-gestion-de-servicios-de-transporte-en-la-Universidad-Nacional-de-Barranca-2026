@@ -1,6 +1,6 @@
 import { CONFIG } from '../config.js';
 import { api } from '../api.js';
-import { formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js';
+import { esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js';
 
 export async function renderEstimacion(container) {
   const [unidades, rutas, historial] = await Promise.all([
@@ -21,7 +21,7 @@ export async function renderEstimacion(container) {
           <div class="field-group">
             <label class="field-label">Unidad</label>
             <select name="id_unidad" class="select" required>
-              ${unidades.map((u) => `<option value="${u.id_unidad}">${escapeHtml(u.placa)} · ${escapeHtml(u.tipo)}</option>`).join('')}
+              ${unidades.filter(esBus).map((u) => `<option value="${u.id_unidad}">${escapeHtml(u.placa)} · ${escapeHtml(u.tipo)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
@@ -40,16 +40,16 @@ export async function renderEstimacion(container) {
             <input name="destino" id="est-destino" class="input" required placeholder="Ej. Lima - Ciudad Universitaria" />
           </div>
           <div class="field-group">
-            <label class="field-label">Distancia total (km)</label>
+            <label class="field-label">Distancia de ida y vuelta (km)</label>
             <input name="distancia_km" id="est-km" type="number" class="input" min="1" value="190" required />
           </div>
           <div class="field-group">
             <label class="field-label">Rendimiento promedio (km/gal)</label>
-            <input name="rendimiento_promedio" id="est-rend" type="number" step="0.1" class="input" min="1" value="9.6" required />
+            <input name="rendimiento_promedio" id="est-rend" type="number" step="0.01" class="input" min="0.01" value="9.6" required />
           </div>
           <div class="field-group">
             <label class="field-label">Precio por galón (S/)</label>
-            <input name="precio_galon" id="est-precio" type="number" step="0.01" class="input" min="1" value="16.50" required />
+            <input name="precio_galon" id="est-precio" type="number" step="0.01" class="input" min="0.01" value="16.50" required />
           </div>
           <div class="field-group">
             <label class="field-label">Costo estimado</label>
@@ -115,7 +115,7 @@ export async function renderEstimacion(container) {
   document.getElementById('est-ruta-preset').addEventListener('change', (e) => {
     const opt = e.target.selectedOptions[0];
     if (e.target.value) {
-      kmEl.value = e.target.value;
+      kmEl.value = Number(e.target.value) * 2;
       document.getElementById('est-destino').value = opt.dataset.dest || '';
       calc();
     }
@@ -124,7 +124,7 @@ export async function renderEstimacion(container) {
   document.getElementById('est-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const costo_estimado = calc();
+
     try {
       await api.saveEstimacion({
         id_unidad: Number(fd.get('id_unidad')),
@@ -133,9 +133,9 @@ export async function renderEstimacion(container) {
         distancia_km: Number(fd.get('distancia_km')),
         rendimiento_promedio: Number(fd.get('rendimiento_promedio')),
         precio_galon: Number(fd.get('precio_galon')),
-        costo_estimado,
       });
-    } catch {
+    } catch (err) {
+      showToast(err.message, 'error');
       return;
     }
     showToast('Estimación guardada.', 'success');
