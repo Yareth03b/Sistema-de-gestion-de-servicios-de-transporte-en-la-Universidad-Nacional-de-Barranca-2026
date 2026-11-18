@@ -15,19 +15,22 @@ public class MantenimientoController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
+        // Se ordena por la fecha real antes de proyectar: EF Core no traduce a SQL
+        // un OrderBy sobre fecha.ToString("yyyy-MM-dd") y la consulta daba 500.
         var list = await _db.Mantenimientos
-            .Join(_db.Unidades, m => m.id_unidad, u => u.id_unidad, (m, u) => new
+            .Join(_db.Unidades, m => m.id_unidad, u => u.id_unidad, (m, u) => new { m, u })
+            .OrderByDescending(x => x.m.fecha)
+            .Select(x => new
             {
-                m.id_mantenimiento,
-                m.id_unidad,
-                placa = u.placa,
-                fecha = m.fecha.ToString("yyyy-MM-dd"),
-                m.km,
-                m.tipo,
-                m.detalle,
-                m.foto
+                x.m.id_mantenimiento,
+                x.m.id_unidad,
+                placa = x.u.placa,
+                fecha = x.m.fecha.ToString("yyyy-MM-dd"),
+                x.m.km,
+                x.m.tipo,
+                x.m.detalle,
+                x.m.foto
             })
-            .OrderByDescending(m => m.fecha)
             .ToListAsync();
         return Ok(list);
     }
