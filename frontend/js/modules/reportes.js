@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { rendimientoPeriodo, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { rendimientoPeriodo, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=2';
 
 export async function renderReportes(container) {
   let [cierres, unidades, turnos, abasts] = await Promise.all([
