@@ -1,6 +1,23 @@
-@TransporteUnab.Api_HostAddress = http://localhost:5067
+@api = http://localhost:5067/api
 
-GET {{TransporteUnab.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Estado de la conexión con la BD
+GET {{api}}/dashboard/health
 
+### Listados (con la BD vacía deben devolver [])
+GET {{api}}/turnos
 ###
+GET {{api}}/combustible
+###
+GET {{api}}/unidades?incluir_inactivas=true
+###
+GET {{api}}/conductores
+###
+GET {{api}}/mantenimiento
+###
+GET {{api}}/rutas
+###
+GET {{api}}/reportes/trimestral
+###
+GET {{api}}/conciliacion
+###
+GET {{api}}/estimacion
