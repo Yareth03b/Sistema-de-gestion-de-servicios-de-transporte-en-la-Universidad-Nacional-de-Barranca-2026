@@ -1,23 +1,29 @@
 import { api } from '../api.js';
 import { CONFIG } from '../config.js';
-import { loadStore } from '../store.js';
-import { formatNumber, formatSpaceInt, formatDateES, escapeHtml } from '../utils.js';
+
+import { esBus, rendimientoPeriodo, rendimientoFlota, formatNumber, formatSpaceInt, formatDateES, escapeHtml } from '../utils.js';
 
 export async function renderDashboard(container, navigate) {
-  const [unidades, turnos, abasts, mants, concil] = await Promise.all([
+  let mantenimientoError = '';
+  const [unidades, todosTurnos, todosVales, listado, concil] = await Promise.all([
     api.getUnidades(),
     api.getTurnos(),
     api.getAbastecimientos(),
-    api.getMantenimientos(),
+    api.getMantenimientos().catch(err => { mantenimientoError = err.message; return null; }),
     api.getConciliacion(),
   ]);
-  const docs = loadStore().documentos || [];
+  const historiales = await Promise.all(unidades.map(u => api.getUnidadHistorial(u.id_unidad)));
+  const mants = listado ?? historiales.flatMap(h => h.mantenimientos);
+  const docs = historiales.flatMap(h => h.documentos);
+  const mes = CONFIG.REFERENCE_DATE.slice(0, 7);
+  const turnos = todosTurnos.filter(t => t.fecha?.startsWith(mes));
+  const abasts = todosVales.filter(a => a.fecha?.startsWith(mes));
 
   const kmMes = turnos.reduce((s, t) => s + Number(t.km_recorridos || (t.km_final - t.km_inicial)), 0);
   const galMes = abasts.reduce((s, a) => s + Number(a.galones), 0);
-  const rendProm = galMes > 0 ? (kmMes / galMes) : 0;
-  const buses = unidades.filter((u) => u.activo !== false && u.tipo === 'Bus');
-  const busesOperativosHoy = buses.filter((u) => (u.estado || 'Operativo') === 'Operativo').length;
+  const rendProm = rendimientoFlota(abasts);
+  const buses = unidades.filter((u) => u.activo !== false && esBus(u));
+  const busesOperativosHoy = buses.filter((u) => (u.estado || '') === 'Operativo').length;
 
   // Alertas dinámicas de mantenimiento y documentos
   const alertas = [];
@@ -89,11 +95,11 @@ export async function renderDashboard(container, navigate) {
 
   // Rendimiento dinámico por unidad
   const rendUnidades = unidades.slice(0, 4).map((u) => {
-    const kmU = turnos.filter((t) => t.id_unidad === u.id_unidad).reduce((s, t) => s + (t.km_final - t.km_inicial), 0);
-    const galU = abasts.filter((a) => a.id_unidad === u.id_unidad).reduce((s, a) => s + Number(a.galones), 0);
-    const val = galU > 0 ? kmU / galU : 0;
+    const vales = abasts.filter(a => a.id_unidad === u.id_unidad);
+    const val = rendimientoPeriodo(vales);
+    if (val == null || rendProm == null) return null;
     return { placa: u.placa, val, diff: +(val - rendProm).toFixed(1) };
-  });
+  }).filter(Boolean);
 
   // Próximo mantenimiento dinámico
   const maintProgress = unidades.slice(0, 4).map((u) => {
@@ -109,7 +115,10 @@ export async function renderDashboard(container, navigate) {
   const ultConc = concil[0];
   const diffConc = ultConc ? Math.abs(Number(ultConc.galones_total) - Number(ultConc.galones_sistema || 0)) : 0;
 
+  if (!container.isConnected) return;
+
   container.innerHTML = `
+    ${mantenimientoError ? `<p role="alert">Listado de mantenimiento no disponible. Se usaron los historiales de las unidades activas. ${escapeHtml(mantenimientoError)}</p>` : ''}
     <div class="dash-top-grid">
       <section class="card">
         <div class="card-header">
@@ -148,7 +157,7 @@ export async function renderDashboard(container, navigate) {
           <div class="control-row">
             <span class="control-label">Conciliación grifo</span>
             <span class="control-desc">${ultConc ? `Diferencia de ${formatNumber(diffConc, 2)} gal` : 'Sin reportes de grifo registrados'}</span>
-            <button class="pill ${diffConc > 0.5 ? 'pill-info' : 'pill-ok'}" data-go="conciliacion" style="cursor:pointer;">${diffConc > 0.5 ? 'Por revisar' : 'Al día'}</button>
+            <button class="pill ${diffConc > 0.5 ? 'pill-info' : 'pill-ok'}" data-go="conciliacion" style="cursor:pointer;">${!ultConc ? 'Sin reporte' : diffConc > 0.5 ? 'Por revisar' : 'Al día'}</button>
           </div>
           <div class="control-row">
             <span class="control-label">Bitácora de turnos</span>
@@ -187,7 +196,7 @@ export async function renderDashboard(container, navigate) {
 
       <article class="kpi-card">
         <div class="kpi-head">
-          <span class="kpi-label">Rendimiento promedio</span>
+          <span class="kpi-label">Rendimiento del mes</span>
           <span class="kpi-icon-box">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="4" width="18" height="13" rx="2"/><line x1="3" y1="11" x2="21" y2="11"/>

@@ -8,6 +8,8 @@ export async function renderRutas(container, searchQuery = '') {
     !q || r.punto_salida.toLowerCase().includes(q) || r.punto_llegada.toLowerCase().includes(q)
   );
 
+  if (!container.isConnected) return;
+
   container.innerHTML = `
     <div class="split-2-col">
       <section class="card">
@@ -30,7 +32,7 @@ export async function renderRutas(container, searchQuery = '') {
                   <td>${escapeHtml(r.punto_llegada)}</td>
                   <td class="num-right">${r.km_referencia}</td>
                 </tr>
-              `).join('')}
+              `).join('') || '<tr><td colspan="3">Sin registros para mostrar.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -43,7 +45,7 @@ export async function renderRutas(container, searchQuery = '') {
         <div class="card-header">
           <div>
             <h2 class="card-title">Áreas solicitantes</h2>
-            <p class="card-meta">Noviembre 2026</p>
+            <p class="card-meta">Todos los periodos</p>
           </div>
           <button id="btn-nueva-area" class="btn btn-outline">+ Nueva área</button>
         </div>
@@ -63,7 +65,7 @@ export async function renderRutas(container, searchQuery = '') {
                   <td class="num-right">${a.vales}</td>
                   <td class="num-right">${formatNumber(a.galones, 2)}</td>
                 </tr>
-              `).join('')}
+              `).join('') || '<tr><td colspan="3">Sin registros para mostrar.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -97,14 +99,19 @@ export async function renderRutas(container, searchQuery = '') {
         document.getElementById('ruta-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const fd = new FormData(e.target);
-          await api.saveRuta({
-            punto_salida: fd.get('punto_salida').trim(),
-            punto_llegada: fd.get('punto_llegada').trim(),
-            km_referencia: Number(fd.get('km_referencia')),
-          });
+          try {
+            await api.saveRuta({
+              punto_salida: fd.get('punto_salida').trim(),
+              punto_llegada: fd.get('punto_llegada').trim(),
+              km_referencia: Number(fd.get('km_referencia')),
+            });
+          } catch (err) {
+            showToast(err.message, 'error');
+            return;
+          }
           showToast('Ruta agregada.', 'success');
           close();
-          renderRutas(container, searchQuery);
+          container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
         });
       },
     });
@@ -128,10 +135,15 @@ export async function renderRutas(container, searchQuery = '') {
         document.getElementById('area-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const fd = new FormData(e.target);
-          await api.saveArea({ nombre: fd.get('nombre').trim() });
+          try {
+            await api.saveArea({ nombre: fd.get('nombre').trim() });
+          } catch (err) {
+            showToast(err.message, 'error');
+            return;
+          }
           showToast('Área registrada.', 'success');
           close();
-          renderRutas(container, searchQuery);
+          container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
         });
       },
     });

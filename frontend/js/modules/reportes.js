@@ -1,8 +1,8 @@
 import { api } from '../api.js';
-import { formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { rendimientoPeriodo, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
 
 export async function renderReportes(container) {
-  const [cierres, unidades, turnos, abasts] = await Promise.all([
+  let [cierres, unidades, turnos, abasts] = await Promise.all([
     api.getCierres(),
     api.getUnidades(),
     api.getTurnos(),
@@ -15,9 +15,12 @@ export async function renderReportes(container) {
     const porUnidad = unidades.map((u) => {
       const kmRec = turnos.filter((t) => t.id_unidad === u.id_unidad).reduce((s, t) => s + (t.km_final - t.km_inicial), 0);
       const gal = abasts.filter((a) => a.id_unidad === u.id_unidad).reduce((s, a) => s + Number(a.galones), 0);
-      const rend = gal > 0 ? kmRec / gal : 0;
+      const vales = abasts.filter(a => a.id_unidad === u.id_unidad);
+      const rend = rendimientoPeriodo(vales);
       return { placa: u.placa, tipo: u.tipo, kmRec, gal, rend, kmAcum: u.km_actual || 0 };
     });
+
+    if (!container.isConnected) return;
 
     container.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
@@ -61,7 +64,7 @@ export async function renderReportes(container) {
                     <td class="num-right"><strong>${formatNumber(r.rend, 2)}</strong></td>
                     <td class="num-right">${formatSpaceInt(r.kmAcum)}</td>
                   </tr>
-                `).join('')}
+                `).join('') || '<tr><td colspan="6">Sin registros para mostrar.</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -75,6 +78,7 @@ export async function renderReportes(container) {
             <div style="margin-bottom:24px;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
                 <strong>Año ${c.anio} · Trimestre ${c.trimestre}</strong>
+                <button class="btn btn-outline" data-actualizar-cierre="${c.id_cierre}">Actualizar cierre</button>
                 <span class="pill pill-ok">Cerrado el ${formatDateES(c.fecha_cierre)}</span>
               </div>
               <div class="table-wrap">
@@ -97,23 +101,36 @@ export async function renderReportes(container) {
                         <td class="num-right">${formatNumber(u.rendimiento, 2)}</td>
                         <td class="num-right">${formatSpaceInt(u.km_acumulado)}</td>
                       </tr>
-                    `).join('')}
+                    `).join('') || '<tr><td colspan="5">Sin registros para mostrar.</td></tr>'}
                   </tbody>
                 </table>
               </div>
             </div>
-          `).join('')}
+          `).join('') || '<p>Sin cierres trimestrales registrados.</p>'}
         </section>
       `}
     `;
 
+    container.querySelectorAll('[data-actualizar-cierre]').forEach(btn => {
+      btn.onclick = async () => {
+        const cierre = cierres.find(c => c.id_cierre === Number(btn.dataset.actualizarCierre));
+        btn.disabled = true;
+        try {
+          await api.actualizarCierre(cierre.anio, cierre.trimestre);
+          cierres = await api.getCierres();
+          paint();
+        } catch (err) {
+          showToast(err.message, 'error');
+          btn.disabled = false;
+        }
+      };
+    });
     container.querySelectorAll('[data-tab]').forEach((btn) => {
       btn.addEventListener('click', () => { activeTab = btn.dataset.tab; paint(); });
     });
 
     document.getElementById('btn-actualizar-rep').addEventListener('click', () => {
-      showToast('Datos actualizados correctamente.', 'success');
-      renderReportes(container);
+      container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
     });
 
     document.getElementById('btn-cerrar-trim').addEventListener('click', () => {
@@ -121,12 +138,12 @@ export async function renderReportes(container) {
         title: 'Aviso de cierre trimestral',
         bodyHtml: `
           <p style="margin-bottom:16px;color:var(--text-secondary);">
-            Esta acción generará el corte oficial de kilometraje y combustible para el trimestre seleccionado y lo bloqueará para auditoría.
+            Esta acción generará el corte oficial de kilometraje y combustible para el trimestre seleccionado. Las correcciones posteriores pueden recalcular el cierre.
           </p>
           <form id="cierre-form" class="form-grid-2">
             <div class="field-group">
               <label class="field-label">Año</label>
-              <input name="anio" type="number" class="input" value="2026" required />
+              <input name="anio" type="number" class="input" value="${new Date().getFullYear()}" required />
             </div>
             <div class="field-group">
               <label class="field-label">Trimestre</label>
@@ -152,7 +169,7 @@ export async function renderReportes(container) {
               showToast('Trimestre cerrado y consolidado.', 'success');
               close();
               activeTab = 'trimestral';
-              renderReportes(container);
+              container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
             } catch (err) {
               const errEl = document.getElementById('cierre-err');
               errEl.textContent = err.message;

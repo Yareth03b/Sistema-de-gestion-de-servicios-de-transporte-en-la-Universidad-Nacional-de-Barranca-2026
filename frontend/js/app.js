@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { CONFIG } from './config.js';
-import { formatDateES } from './utils.js';
+import { formatDateES, showToast } from './utils.js';
 import { initAuth, getSession } from './modules/auth.js';
 import { renderDashboard } from './modules/dashboard.js';
 import { renderTurnos } from './modules/turnos.js';
@@ -48,7 +48,18 @@ async function navigate(route) {
 
   const container = document.getElementById('view-container');
   const searchVal = document.getElementById('global-search-input').value || '';
-  const result = await cfg.render(container, route === 'dashboard' ? navigate : searchVal);
+  const view = container.cloneNode(false);
+  container.replaceWith(view);
+  let result;
+  try {
+    result = await cfg.render(view, route === 'dashboard' ? navigate : searchVal);
+  } catch (err) {
+    if (!view.isConnected) return;
+    actionsEl.replaceChildren();
+    view.textContent = 'No se pudo cargar la pantalla. ' + err.message;
+    return;
+  }
+  if (!view.isConnected) return;
 
   if (cfg.cta && result?.onPrimaryAction) {
     document.getElementById('primary-cta-btn').addEventListener('click', result.onPrimaryAction);
@@ -63,7 +74,7 @@ function showApp(session) {
   document.getElementById('sidebar-user-name').textContent = session.nombre_completo || 'Encargado de Transporte';
   document.getElementById('sidebar-user-handle').textContent = session.nombre_usuario || 'admin';
   document.getElementById('topbar-date').textContent = formatDateES(CONFIG.REFERENCE_DATE);
-  api.checkHealth();
+  api.checkHealth().catch(err => showToast(err.message, 'error'));
   navigate('dashboard');
 }
 
@@ -73,6 +84,7 @@ function showLogin() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('actualizar-vista', () => navigate(currentRoute));
   initAuth(showApp, showLogin);
 
   document.querySelectorAll('.nav-item').forEach((btn) => {

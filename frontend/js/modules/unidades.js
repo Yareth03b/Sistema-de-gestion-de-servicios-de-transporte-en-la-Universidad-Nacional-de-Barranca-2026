@@ -1,14 +1,18 @@
+import { CONFIG } from '../config.js';
+import { getSession } from './auth.js';
 import { api } from '../api.js';
-import { formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
 
 export async function renderUnidades(container, searchQuery = '') {
-  const unidades = await api.getUnidades();
+  const unidades = await api.getUnidades(true);
 
   const paintList = () => {
     const q = searchQuery.trim().toLowerCase();
     const filtered = unidades.filter((u) =>
-      !q || u.placa.toLowerCase().includes(q) || u.marca.toLowerCase().includes(q) || u.modelo.toLowerCase().includes(q)
+      !q || u.placa.toLowerCase().includes(q) || (u.marca || '').toLowerCase().includes(q) || (u.modelo || '').toLowerCase().includes(q)
     );
+
+    if (!container.isConnected) return;
 
     container.innerHTML = `
       <section class="card">
@@ -30,18 +34,19 @@ export async function renderUnidades(container, searchQuery = '') {
               ${filtered.map((u) => `
                 <tr>
                   <td><span class="plate-badge">${escapeHtml(u.placa)}</span></td>
-                  <td>${escapeHtml(u.tipo)}</td>
+                  <td>${escapeHtml(u.tipo)} ${esBus(u) ? escapeHtml('numero_bus' in u ? u.numero_bus : u.placa.replace(/\D/g, '').match(/\d{3}$/)?.[0]) : ''}</td>
                   <td>${escapeHtml(u.marca)} · ${escapeHtml(u.modelo)}</td>
                   <td>${escapeHtml(u.codigo_patrimonial || '-')}</td>
                   <td class="num-right">${u.capacidad || '-'}</td>
                   <td class="num-right">${formatSpaceInt(u.km_actual || 0)} km</td>
-                  <td><span class="pill ${u.estado === 'Operativo' ? 'pill-success' : 'pill-info'}">${escapeHtml(u.estado || 'Operativo')}</span></td>
+                  <td><span class="pill ${u.estado === 'Operativo' ? 'pill-success' : 'pill-info'}">${escapeHtml(u.activo ? u.estado || 'Sin estado' : 'De baja')}</span></td>
                   <td style="white-space:nowrap;">
                     <button class="btn-link" data-hist-unidad="${u.id_unidad}">Ver historial</button>
                     <button class="btn-link" data-edit-unidad="${u.id_unidad}">Editar</button>
+                  ${u.activo && 'numero_bus' in u ? `<button type="button" class="btn-link" data-baja="${u.id_unidad}">Dar de baja</button>` : ''}
                   </td>
                 </tr>
-              `).join('')}
+              `).join('') || '<tr><td colspan="8">Sin registros para mostrar.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -51,6 +56,19 @@ export async function renderUnidades(container, searchQuery = '') {
       </section>
     `;
 
+    container.querySelectorAll('[data-baja]').forEach(btn => {
+      btn.onclick = async () => {
+        if (!window.confirm('¿Dar de baja este registro y conservar su historial?')) return;
+        btn.disabled = true;
+        try {
+          await api.bajaUnidad(Number(btn.dataset.baja));
+          container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
+        } catch (err) {
+          showToast(err.message, 'error');
+          btn.disabled = false;
+        }
+      };
+    });
     container.querySelectorAll('[data-edit-unidad]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const u = unidades.find((x) => x.id_unidad === Number(btn.dataset.editUnidad));
@@ -64,8 +82,15 @@ export async function renderUnidades(container, searchQuery = '') {
   };
 
   const openHistorial = async (idUnidad) => {
-    const hist = await api.getUnidadHistorial(idUnidad);
+    let hist;
+    try {
+      hist = await api.getUnidadHistorial(idUnidad);
+    } catch (err) {
+      showToast(err.message, 'error');
+      return;
+    }
     const u = hist.unidad;
+    if (!container.isConnected) return;
     container.innerHTML = `
       <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
         <div style="display:flex;align-items:center;gap:12px;">
@@ -74,8 +99,8 @@ export async function renderUnidades(container, searchQuery = '') {
           <strong>${escapeHtml(u.marca)} ${escapeHtml(u.modelo)}</strong>
         </div>
         <div style="display:flex;gap:8px;">
-          <button id="btn-nuevo-doc" class="btn btn-outline btn-sm">+ Documento</button>
-          <button id="btn-nuevo-inc" class="btn btn-primary btn-sm">+ Nuevo incidente</button>
+          <button ${esBus(u) ? '' : 'disabled'} id="btn-nuevo-doc" class="btn btn-outline btn-sm">+ Documento</button>
+          <button ${esBus(u) ? '' : 'disabled'} id="btn-nuevo-inc" class="btn btn-primary btn-sm">+ Nuevo incidente</button>
         </div>
       </div>
 
@@ -108,6 +133,7 @@ export async function renderUnidades(container, searchQuery = '') {
                 <div>
                   <div class="alert-row-title">${formatDateES(inc.fecha)}</div>
                   <div class="alert-row-desc">${escapeHtml(inc.descripcion)}</div>
+                  <div>${escapeHtml(inc.conductor ?? 'Sin conductor identificado')}</div>
                 </div>
                 <button class="btn-link" data-edit-inc="${inc.id_incidente}">Editar</button>
               </div>
@@ -136,7 +162,7 @@ export async function renderUnidades(container, searchQuery = '') {
       </section>
     `;
 
-    document.getElementById('back-unidades').addEventListener('click', () => renderUnidades(container, searchQuery));
+    document.getElementById('back-unidades').addEventListener('click', () => container.dispatchEvent(new Event('actualizar-vista', { bubbles: true })));
     document.getElementById('btn-nuevo-inc').addEventListener('click', () => openIncidenteModal(idUnidad, null));
     document.getElementById('btn-nuevo-doc').addEventListener('click', () => openDocumentoModal(idUnidad));
     container.querySelectorAll('[data-edit-inc]').forEach((btn) => {
@@ -154,7 +180,7 @@ export async function renderUnidades(container, searchQuery = '') {
         <form id="inc-form" class="field-group" style="gap:14px;">
           <div class="field-group">
             <label class="field-label">Fecha y hora</label>
-            <input name="fecha" type="datetime-local" class="input" value="${existing?.fecha?.slice(0, 16) || '2026-11-12T10:00'}" required />
+            <input name="fecha" type="datetime-local" max="${CONFIG.REFERENCE_DATETIME}" class="input" value="${existing?.fecha?.slice(0, 16) || CONFIG.REFERENCE_DATETIME}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Descripción del incidente</label>
@@ -169,11 +195,16 @@ export async function renderUnidades(container, searchQuery = '') {
         document.getElementById('inc-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const fd = new FormData(e.target);
-          await api.saveIncidente({
-            id_unidad: idUnidad,
-            fecha: fd.get('fecha'),
-            descripcion: fd.get('descripcion').trim(),
-          }, existing?.id_incidente || null);
+          try {
+            await api.saveIncidente({
+              id_unidad: idUnidad,
+              fecha: fd.get('fecha'),
+              descripcion: fd.get('descripcion').trim(),
+            }, existing?.id_incidente || null);
+          } catch (err) {
+            showToast(err.message, 'error');
+            return;
+          }
           showToast(existing ? 'Incidente actualizado.' : 'Incidente registrado.', 'success');
           close();
           openHistorial(idUnidad);
@@ -201,7 +232,7 @@ export async function renderUnidades(container, searchQuery = '') {
           </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Fecha de vencimiento</label>
-            <input name="fecha_vencimiento" type="date" class="input" required value="2027-11-12" />
+            <input name="fecha_vencimiento" type="date" class="input" required />
           </div>
           <div class="modal-actions" style="grid-column:1/-1;">
             <button type="submit" class="btn btn-primary">Guardar documento</button>
@@ -212,12 +243,17 @@ export async function renderUnidades(container, searchQuery = '') {
         document.getElementById('doc-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const fd = new FormData(e.target);
-          await api.saveDocumento({
-            id_unidad: idUnidad,
-            tipo: fd.get('tipo'),
-            numero: fd.get('numero').trim(),
-            fecha_vencimiento: fd.get('fecha_vencimiento'),
-          });
+          try {
+            await api.saveDocumento({
+              id_unidad: idUnidad,
+              tipo: fd.get('tipo'),
+              numero: fd.get('numero').trim(),
+              fecha_vencimiento: fd.get('fecha_vencimiento'),
+            });
+          } catch (err) {
+            showToast(err.message, 'error');
+            return;
+          }
           showToast('Documento registrado.', 'success');
           close();
           openHistorial(idUnidad);
@@ -238,7 +274,7 @@ export async function renderUnidades(container, searchQuery = '') {
           <div class="field-group">
             <label class="field-label">Tipo</label>
             <select name="tipo" class="select">
-              ${['Bus', 'Camioneta', 'Minivan'].map((t) => `<option value="${t}" ${existing?.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}
+              ${[...new Set(['Bus', 'Camioneta', 'Minivan', existing?.tipo].filter(Boolean))].map((t) => `<option value="${escapeHtml(t)}" ${existing?.tipo === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
@@ -255,12 +291,12 @@ export async function renderUnidades(container, searchQuery = '') {
           </div>
           <div class="field-group">
             <label class="field-label">Capacidad</label>
-            <input name="capacidad" type="number" class="input" value="${existing?.capacidad ?? 40}" />
+            <input name="capacidad" type="number" class="input" value="${existing ? existing.capacidad ?? '' : 40}" />
           </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Estado</label>
             <select name="estado" class="select">
-              ${['Operativo', 'En mantenimiento', 'Inactivo'].map((s) => `<option value="${s}" ${existing?.estado === s ? 'selected' : ''}>${s}</option>`).join('')}
+              ${[...new Set([existing ? existing.estado ?? '' : 'Operativo', 'Operativo', 'En mantenimiento'])].map((s) => `<option value="${escapeHtml(s)}" ${existing?.estado === s ? 'selected' : ''}>${escapeHtml(s || 'Sin estado')}</option>`).join('')}
             </select>
           </div>
           <p id="unidad-err" class="field-error hidden" style="grid-column:1/-1;"></p>
@@ -274,18 +310,20 @@ export async function renderUnidades(container, searchQuery = '') {
           e.preventDefault();
           const fd = new FormData(e.target);
           try {
+            if (unidades.some(u => u.id_unidad !== existing?.id_unidad && u.placa.toUpperCase() === fd.get('placa').trim().toUpperCase())) throw new Error('La placa ya está registrada.');
             await api.saveUnidad({
+              id_usuario: getSession()?.id_usuario,
               placa: fd.get('placa').trim().toUpperCase(),
               tipo: fd.get('tipo'),
               marca: fd.get('marca').trim(),
               modelo: fd.get('modelo').trim(),
               codigo_patrimonial: fd.get('codigo_patrimonial').trim(),
-              capacidad: Number(fd.get('capacidad')),
+              capacidad: fd.get('capacidad') ? Number(fd.get('capacidad')) : null,
               estado: fd.get('estado'),
             }, existing?.id_unidad || null);
             showToast(existing ? 'Unidad actualizada.' : 'Unidad registrada.', 'success');
             close();
-            renderUnidades(container, searchQuery);
+            container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
           } catch (err) {
             const errEl = document.getElementById('unidad-err');
             errEl.textContent = err.message;
