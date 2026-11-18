@@ -4,6 +4,8 @@ import { formatNumber, openModal, showToast, escapeHtml } from '../utils.js';
 export async function renderConciliacion(container) {
   const reportes = await api.getConciliacion();
 
+  if (!container.isConnected) return;
+
   container.innerHTML = `
     <section class="card">
       <div class="card-header">
@@ -42,7 +44,7 @@ export async function renderConciliacion(container) {
                   <td>${escapeHtml(r.observaciones || '-')}</td>
                 </tr>
               `;
-            }).join('')}
+            }).join('') || '<tr><td colspan="7">Sin registros para mostrar.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -56,7 +58,7 @@ export async function renderConciliacion(container) {
         <form id="grifo-form" class="form-grid-2">
           <div class="field-group">
             <label class="field-label">Año</label>
-            <input name="anio" type="number" class="input" value="2026" required />
+            <input name="anio" type="number" class="input" value="${new Date().getFullYear()}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Trimestre</label>
@@ -84,15 +86,19 @@ export async function renderConciliacion(container) {
         document.getElementById('grifo-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const fd = new FormData(e.target);
-          await api.saveReporteGrifo({
-            anio: Number(fd.get('anio')),
-            trimestre: Number(fd.get('trimestre')),
-            galones_total: Number(fd.get('galones_total')),
-            observaciones: fd.get('observaciones').trim(),
-          });
+          try {
+            await api.saveReporteGrifo({
+              anio: Number(fd.get('anio')),
+              trimestre: Number(fd.get('trimestre')),
+              galones_total: Number(fd.get('galones_total')),
+              observaciones: fd.get('observaciones').trim(),
+            });
+          } catch {
+            return;
+          }
           showToast('Reporte de grifo actualizado.', 'success');
           close();
-          renderConciliacion(container);
+          container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
         });
       },
     });

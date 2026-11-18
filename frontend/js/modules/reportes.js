@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { rendimientoPeriodo, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
 
 export async function renderReportes(container) {
   const [cierres, unidades, turnos, abasts] = await Promise.all([
@@ -15,9 +15,12 @@ export async function renderReportes(container) {
     const porUnidad = unidades.map((u) => {
       const kmRec = turnos.filter((t) => t.id_unidad === u.id_unidad).reduce((s, t) => s + (t.km_final - t.km_inicial), 0);
       const gal = abasts.filter((a) => a.id_unidad === u.id_unidad).reduce((s, a) => s + Number(a.galones), 0);
-      const rend = gal > 0 ? kmRec / gal : 0;
+      const vales = abasts.filter(a => a.id_unidad === u.id_unidad);
+      const rend = rendimientoPeriodo(vales);
       return { placa: u.placa, tipo: u.tipo, kmRec, gal, rend, kmAcum: u.km_actual || 0 };
     });
+
+    if (!container.isConnected) return;
 
     container.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
@@ -61,7 +64,7 @@ export async function renderReportes(container) {
                     <td class="num-right"><strong>${formatNumber(r.rend, 2)}</strong></td>
                     <td class="num-right">${formatSpaceInt(r.kmAcum)}</td>
                   </tr>
-                `).join('')}
+                `).join('') || '<tr><td colspan="6">Sin registros para mostrar.</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -97,12 +100,12 @@ export async function renderReportes(container) {
                         <td class="num-right">${formatNumber(u.rendimiento, 2)}</td>
                         <td class="num-right">${formatSpaceInt(u.km_acumulado)}</td>
                       </tr>
-                    `).join('')}
+                    `).join('') || '<tr><td colspan="5">Sin registros para mostrar.</td></tr>'}
                   </tbody>
                 </table>
               </div>
             </div>
-          `).join('')}
+          `).join('') || '<p>Sin cierres trimestrales registrados.</p>'}
         </section>
       `}
     `;
@@ -112,8 +115,7 @@ export async function renderReportes(container) {
     });
 
     document.getElementById('btn-actualizar-rep').addEventListener('click', () => {
-      showToast('Datos actualizados correctamente.', 'success');
-      renderReportes(container);
+      container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
     });
 
     document.getElementById('btn-cerrar-trim').addEventListener('click', () => {
@@ -126,7 +128,7 @@ export async function renderReportes(container) {
           <form id="cierre-form" class="form-grid-2">
             <div class="field-group">
               <label class="field-label">Año</label>
-              <input name="anio" type="number" class="input" value="2026" required />
+              <input name="anio" type="number" class="input" value="${new Date().getFullYear()}" required />
             </div>
             <div class="field-group">
               <label class="field-label">Trimestre</label>
@@ -152,7 +154,7 @@ export async function renderReportes(container) {
               showToast('Trimestre cerrado y consolidado.', 'success');
               close();
               activeTab = 'trimestral';
-              renderReportes(container);
+              container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
             } catch (err) {
               const errEl = document.getElementById('cierre-err');
               errEl.textContent = err.message;

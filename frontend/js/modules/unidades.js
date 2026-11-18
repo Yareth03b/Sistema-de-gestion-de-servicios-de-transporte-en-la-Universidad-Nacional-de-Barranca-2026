@@ -1,3 +1,5 @@
+import { CONFIG } from '../config.js';
+import { getSession } from './auth.js';
 import { api } from '../api.js';
 import { formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
 
@@ -7,8 +9,10 @@ export async function renderUnidades(container, searchQuery = '') {
   const paintList = () => {
     const q = searchQuery.trim().toLowerCase();
     const filtered = unidades.filter((u) =>
-      !q || u.placa.toLowerCase().includes(q) || u.marca.toLowerCase().includes(q) || u.modelo.toLowerCase().includes(q)
+      !q || u.placa.toLowerCase().includes(q) || (u.marca || '').toLowerCase().includes(q) || (u.modelo || '').toLowerCase().includes(q)
     );
+
+    if (!container.isConnected) return;
 
     container.innerHTML = `
       <section class="card">
@@ -30,18 +34,18 @@ export async function renderUnidades(container, searchQuery = '') {
               ${filtered.map((u) => `
                 <tr>
                   <td><span class="plate-badge">${escapeHtml(u.placa)}</span></td>
-                  <td>${escapeHtml(u.tipo)}</td>
+                  <td>${escapeHtml(u.tipo)} ${u.tipo === 'Bus' ? (u.placa.match(/\d{3}$/)?.[0] || '') : ''}</td>
                   <td>${escapeHtml(u.marca)} · ${escapeHtml(u.modelo)}</td>
                   <td>${escapeHtml(u.codigo_patrimonial || '-')}</td>
                   <td class="num-right">${u.capacidad || '-'}</td>
                   <td class="num-right">${formatSpaceInt(u.km_actual || 0)} km</td>
-                  <td><span class="pill ${u.estado === 'Operativo' ? 'pill-success' : 'pill-info'}">${escapeHtml(u.estado || 'Operativo')}</span></td>
+                  <td><span class="pill ${u.estado === 'Operativo' ? 'pill-success' : 'pill-info'}">${escapeHtml(u.estado || 'Sin estado')}</span></td>
                   <td style="white-space:nowrap;">
                     <button class="btn-link" data-hist-unidad="${u.id_unidad}">Ver historial</button>
                     <button class="btn-link" data-edit-unidad="${u.id_unidad}">Editar</button>
                   </td>
                 </tr>
-              `).join('')}
+              `).join('') || '<tr><td colspan="8">Sin registros para mostrar.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -64,8 +68,14 @@ export async function renderUnidades(container, searchQuery = '') {
   };
 
   const openHistorial = async (idUnidad) => {
-    const hist = await api.getUnidadHistorial(idUnidad);
+    let hist;
+    try {
+      hist = await api.getUnidadHistorial(idUnidad);
+    } catch {
+      return;
+    }
     const u = hist.unidad;
+    if (!container.isConnected) return;
     container.innerHTML = `
       <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
         <div style="display:flex;align-items:center;gap:12px;">
@@ -136,7 +146,7 @@ export async function renderUnidades(container, searchQuery = '') {
       </section>
     `;
 
-    document.getElementById('back-unidades').addEventListener('click', () => renderUnidades(container, searchQuery));
+    document.getElementById('back-unidades').addEventListener('click', () => container.dispatchEvent(new Event('actualizar-vista', { bubbles: true })));
     document.getElementById('btn-nuevo-inc').addEventListener('click', () => openIncidenteModal(idUnidad, null));
     document.getElementById('btn-nuevo-doc').addEventListener('click', () => openDocumentoModal(idUnidad));
     container.querySelectorAll('[data-edit-inc]').forEach((btn) => {
@@ -154,7 +164,7 @@ export async function renderUnidades(container, searchQuery = '') {
         <form id="inc-form" class="field-group" style="gap:14px;">
           <div class="field-group">
             <label class="field-label">Fecha y hora</label>
-            <input name="fecha" type="datetime-local" class="input" value="${existing?.fecha?.slice(0, 16) || '2026-11-12T10:00'}" required />
+            <input name="fecha" type="datetime-local" max="${CONFIG.REFERENCE_DATE}T${new Date().toTimeString().slice(0, 5)}" class="input" value="${existing?.fecha?.slice(0, 16) || CONFIG.REFERENCE_DATE + 'T00:00'}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Descripción del incidente</label>
@@ -169,11 +179,15 @@ export async function renderUnidades(container, searchQuery = '') {
         document.getElementById('inc-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const fd = new FormData(e.target);
-          await api.saveIncidente({
-            id_unidad: idUnidad,
-            fecha: fd.get('fecha'),
-            descripcion: fd.get('descripcion').trim(),
-          }, existing?.id_incidente || null);
+          try {
+            await api.saveIncidente({
+              id_unidad: idUnidad,
+              fecha: fd.get('fecha'),
+              descripcion: fd.get('descripcion').trim(),
+            }, existing?.id_incidente || null);
+          } catch {
+            return;
+          }
           showToast(existing ? 'Incidente actualizado.' : 'Incidente registrado.', 'success');
           close();
           openHistorial(idUnidad);
@@ -201,7 +215,7 @@ export async function renderUnidades(container, searchQuery = '') {
           </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Fecha de vencimiento</label>
-            <input name="fecha_vencimiento" type="date" class="input" required value="2027-11-12" />
+            <input name="fecha_vencimiento" type="date" class="input" required />
           </div>
           <div class="modal-actions" style="grid-column:1/-1;">
             <button type="submit" class="btn btn-primary">Guardar documento</button>
@@ -212,12 +226,16 @@ export async function renderUnidades(container, searchQuery = '') {
         document.getElementById('doc-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const fd = new FormData(e.target);
-          await api.saveDocumento({
-            id_unidad: idUnidad,
-            tipo: fd.get('tipo'),
-            numero: fd.get('numero').trim(),
-            fecha_vencimiento: fd.get('fecha_vencimiento'),
-          });
+          try {
+            await api.saveDocumento({
+              id_unidad: idUnidad,
+              tipo: fd.get('tipo'),
+              numero: fd.get('numero').trim(),
+              fecha_vencimiento: fd.get('fecha_vencimiento'),
+            });
+          } catch {
+            return;
+          }
           showToast('Documento registrado.', 'success');
           close();
           openHistorial(idUnidad);
@@ -260,7 +278,7 @@ export async function renderUnidades(container, searchQuery = '') {
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Estado</label>
             <select name="estado" class="select">
-              ${['Operativo', 'En mantenimiento', 'Inactivo'].map((s) => `<option value="${s}" ${existing?.estado === s ? 'selected' : ''}>${s}</option>`).join('')}
+              ${['Operativo', 'En mantenimiento'].map((s) => `<option value="${s}" ${existing?.estado === s ? 'selected' : ''}>${s}</option>`).join('')}
             </select>
           </div>
           <p id="unidad-err" class="field-error hidden" style="grid-column:1/-1;"></p>
@@ -274,7 +292,9 @@ export async function renderUnidades(container, searchQuery = '') {
           e.preventDefault();
           const fd = new FormData(e.target);
           try {
+            if (unidades.some(u => u.id_unidad !== existing?.id_unidad && u.placa.toUpperCase() === fd.get('placa').trim().toUpperCase())) throw new Error('La placa ya está registrada.');
             await api.saveUnidad({
+              id_usuario: getSession()?.id_usuario,
               placa: fd.get('placa').trim().toUpperCase(),
               tipo: fd.get('tipo'),
               marca: fd.get('marca').trim(),
@@ -285,7 +305,7 @@ export async function renderUnidades(container, searchQuery = '') {
             }, existing?.id_unidad || null);
             showToast(existing ? 'Unidad actualizada.' : 'Unidad registrada.', 'success');
             close();
-            renderUnidades(container, searchQuery);
+            container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
           } catch (err) {
             const errEl = document.getElementById('unidad-err');
             errEl.textContent = err.message;

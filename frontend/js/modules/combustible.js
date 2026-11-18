@@ -1,3 +1,5 @@
+import { validarRegistro, confirmarPeriodo } from '../validaciones.js';
+import { CONFIG } from '../config.js';
 import { api } from '../api.js';
 import { formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
 
@@ -13,23 +15,28 @@ export async function renderCombustible(container, searchQuery = '') {
   let filterUnidad = 'all';
   let filterArea = 'all';
 
+  const turnos = await api.getTurnos();
+  let periodo = '';
+  const meses = [...new Set(abasts.map(r => r.fecha.slice(0, 7)))].sort().reverse();
   const paint = () => {
     const q = searchQuery.trim().toLowerCase();
     const filtered = abasts.filter((a) => {
       const mU = filterUnidad === 'all' || String(a.id_unidad) === filterUnidad;
       const mA = filterArea === 'all' || String(a.id_area) === filterArea;
       const mQ = !q || a.nro_vale.toLowerCase().includes(q) || a.placa.toLowerCase().includes(q) || a.conductor.toLowerCase().includes(q);
-      return mU && mA && mQ;
+      return (!periodo || a.fecha.startsWith(periodo)) && mU && mA && mQ;
     });
+
+    if (!container.isConnected) return;
 
     container.innerHTML = `
       <section class="card">
         <div class="filters-bar">
           <div class="field-group">
             <label class="field-label">Periodo</label>
-            <select class="select">
-              <option>Noviembre 2026</option>
-              <option>Todos los periodos</option>
+            <select id="filtro-periodo" class="select">
+              <option value="">Todos los periodos</option>
+              ${meses.map(m => `<option ${m === periodo ? 'selected' : ''}>${m}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
@@ -88,6 +95,7 @@ export async function renderCombustible(container, searchQuery = '') {
       </section>
     `;
 
+    document.getElementById('filtro-periodo').onchange = e => { periodo = e.target.value; paint(); };
     document.getElementById('comb-unidad').addEventListener('change', (e) => { filterUnidad = e.target.value; paint(); });
     document.getElementById('comb-area').addEventListener('change', (e) => { filterArea = e.target.value; paint(); });
     container.querySelectorAll('[data-edit-vale]').forEach((btn) => {
@@ -103,7 +111,7 @@ export async function renderCombustible(container, searchQuery = '') {
       showToast('Primero registra al menos una unidad y un conductor.', 'error');
       return;
     }
-    const today = new Date().toISOString().slice(0, 10);
+    const today = CONFIG.REFERENCE_DATE;
     openModal({
       title: existing ? 'Editar vale de combustible' : 'Nuevo vale de combustible',
       bodyHtml: `
@@ -114,7 +122,7 @@ export async function renderCombustible(container, searchQuery = '') {
           </div>
           <div class="field-group">
             <label class="field-label">Fecha</label>
-            <input name="fecha" type="date" class="input" value="${existing?.fecha || today}" required />
+            <input name="fecha" type="date" class="input" max="${today}" value="${existing?.fecha?.slice(0, 10) || today}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Unidad</label>
@@ -125,7 +133,7 @@ export async function renderCombustible(container, searchQuery = '') {
           <div class="field-group">
             <label class="field-label">Conductor</label>
             <select name="id_conductor" class="select" required>
-              ${conductores.map((c) => `<option value="${c.id_conductor}" ${existing?.id_conductor === c.id_conductor ? 'selected' : ''}>${escapeHtml(c.nombres)} ${escapeHtml(c.apellidos)}</option>`).join('')}
+              ${conductores.filter(c => c.activo).map((c) => `<option value="${c.id_conductor}" ${existing?.id_conductor === c.id_conductor ? 'selected' : ''}>${escapeHtml(c.nombres)} ${escapeHtml(c.apellidos)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
@@ -185,10 +193,13 @@ export async function renderCombustible(container, searchQuery = '') {
             observaciones: fd.get('observaciones'),
           };
           try {
+            validarRegistro(payload, existing, unidades, conductores, turnos, abasts);
+            if (abasts.some(a => a.id_abastecimiento !== existing?.id_abastecimiento && a.nro_vale.toUpperCase() === payload.nro_vale.toUpperCase())) throw new Error('Este vale ya está registrado.');
+            if (!await confirmarPeriodo(payload.fecha, existing?.fecha)) return;
             await api.saveAbastecimiento(payload, existing?.id_abastecimiento || null);
             showToast(existing ? 'Vale actualizado.' : 'Vale registrado.', 'success');
             close();
-            renderCombustible(container, searchQuery);
+            container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
           } catch (err) {
             errEl.textContent = err.message;
             errEl.classList.remove('hidden');

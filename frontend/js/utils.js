@@ -1,4 +1,5 @@
 export function formatNumber(n, decimals = 0) {
+  if (n == null || !Number.isFinite(Number(n))) return '—';
   const num = Number(n || 0);
   return num.toLocaleString('es-PE', {
     minimumFractionDigits: decimals,
@@ -7,6 +8,7 @@ export function formatNumber(n, decimals = 0) {
 }
 
 export function formatSpaceInt(n) {
+  if (n == null || !Number.isFinite(Number(n))) return '—';
   return Math.round(Number(n || 0))
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -60,4 +62,10 @@ export function openModal({ title, bodyHtml, onMount }) {
   });
   if (onMount) onMount(close);
   return close;
+}
+
+export function rendimientoPeriodo(vales) {
+  const galones = vales.reduce((total, vale) => total + vale.galones, 0);
+  if (galones <= 0 || !vales.some(vale => vale.km_consumidos != null)) return null;
+  return vales.reduce((total, vale) => total + (vale.km_consumidos ?? 0), 0) / galones;
 }

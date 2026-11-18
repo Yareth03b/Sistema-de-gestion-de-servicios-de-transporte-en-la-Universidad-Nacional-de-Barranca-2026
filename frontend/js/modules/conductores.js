@@ -10,6 +10,8 @@ export async function renderConductores(container, searchQuery = '') {
       !q || c.nombres.toLowerCase().includes(q) || c.apellidos.toLowerCase().includes(q) || c.dni.includes(q)
     );
 
+    if (!container.isConnected) return;
+
     container.innerHTML = `
       <section class="card">
         <div class="table-wrap">
@@ -34,7 +36,7 @@ export async function renderConductores(container, searchQuery = '') {
                   <td><span class="pill ${c.activo ? 'pill-success' : 'pill-ok'}">${c.activo ? 'Activo' : 'Inactivo'}</span></td>
                   <td><button class="btn-link" data-edit-cond="${c.id_conductor}">Editar</button></td>
                 </tr>
-              `).join('')}
+              `).join('') || '<tr><td colspan="6">Sin registros para mostrar.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -89,6 +91,9 @@ export async function renderConductores(container, searchQuery = '') {
           e.preventDefault();
           const fd = new FormData(e.target);
           try {
+            const dni = fd.get('dni').trim();
+            if (!/^\d{8}$/.test(dni)) throw new Error('El DNI debe tener ocho dígitos.');
+            if (conductores.some(c => c.id_conductor !== existing?.id_conductor && c.dni === dni)) throw new Error('El DNI ya está registrado.');
             await api.saveConductor({
               dni: fd.get('dni').trim(),
               brevete: fd.get('brevete').trim(),
@@ -98,7 +103,7 @@ export async function renderConductores(container, searchQuery = '') {
             }, existing?.id_conductor || null);
             showToast(existing ? 'Conductor actualizado.' : 'Conductor registrado.', 'success');
             close();
-            renderConductores(container, searchQuery);
+            container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
           } catch (err) {
             const errEl = document.getElementById('cond-err');
             errEl.textContent = err.message;
