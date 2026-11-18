@@ -14,7 +14,7 @@ import { renderConciliacion } from './modules/conciliacion.js';
 import { renderEstimacion } from './modules/estimacion.js';
 
 const ROUTES = {
-  dashboard: { title: 'Inicio', subtitle: `Datos al ${formatDateES(CONFIG.REFERENCE_DATE)}`, cta: null, render: renderDashboard },
+  dashboard: { title: 'Inicio', subtitle: () => `Datos al ${formatDateES(CONFIG.REFERENCE_DATE)}`, cta: null, render: renderDashboard },
   turnos: { title: 'Bitácora de turnos', subtitle: '', cta: '+ Nuevo turno', render: renderTurnos },
   combustible: { title: 'Combustible', subtitle: '', cta: '+ Nuevo vale', render: renderCombustible },
   unidades: { title: 'Unidades', subtitle: '', cta: '+ Nueva unidad', render: renderUnidades },
@@ -38,7 +38,8 @@ async function navigate(route) {
   });
 
   document.getElementById('topbar-title').textContent = cfg.title;
-  document.getElementById('topbar-subtitle').textContent = cfg.subtitle;
+  document.getElementById('topbar-subtitle').textContent = typeof cfg.subtitle === 'function' ? cfg.subtitle() : cfg.subtitle;
+  document.getElementById('topbar-date').textContent = formatDateES(CONFIG.REFERENCE_DATE);
   const activeNav = document.querySelector(`.nav-item[data-route="${route}"] svg`);
   document.getElementById('topbar-icon').innerHTML = activeNav ? activeNav.outerHTML : '';
 

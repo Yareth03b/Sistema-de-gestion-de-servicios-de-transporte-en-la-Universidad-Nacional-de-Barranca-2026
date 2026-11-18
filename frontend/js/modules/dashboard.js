@@ -16,6 +16,8 @@ export async function renderDashboard(container, navigate) {
   const kmMes = turnos.reduce((s, t) => s + Number(t.km_recorridos || (t.km_final - t.km_inicial)), 0);
   const galMes = abasts.reduce((s, a) => s + Number(a.galones), 0);
   const rendProm = galMes > 0 ? (kmMes / galMes) : 0;
+  const buses = unidades.filter((u) => u.activo !== false && u.tipo === 'Bus');
+  const busesOperativosHoy = buses.filter((u) => (u.estado || 'Operativo') === 'Operativo').length;
 
   // Alertas dinámicas de mantenimiento y documentos
   const alertas = [];
@@ -195,16 +197,17 @@ export async function renderDashboard(container, navigate) {
         <div><span class="kpi-value">${formatNumber(rendProm, 1)}</span><span class="kpi-unit">km/gal</span></div>
       </article>
 
-      <article class="kpi-card">
+      <article class="kpi-card" data-go="unidades" style="cursor:pointer;" title="Ver flota de buses">
         <div class="kpi-head">
-          <span class="kpi-label">Vales registrados</span>
+          <span class="kpi-label">Buses operativos hoy</span>
           <span class="kpi-icon-box">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/>
+              <rect x="3" y="4" width="18" height="13" rx="2"/><line x1="3" y1="11" x2="21" y2="11"/>
+              <circle cx="7.5" cy="19.5" r="1.5"/><circle cx="16.5" cy="19.5" r="1.5"/>
             </svg>
           </span>
         </div>
-        <div><span class="kpi-value">${abasts.length}</span></div>
+        <div><span class="kpi-value">${busesOperativosHoy}</span>${buses.length ? `<span class="kpi-unit">/ ${buses.length}</span>` : ''}</div>
       </article>
     </div>
 
