@@ -1,0 +1,61 @@
+name: Deploy API C# a MonsterASP
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publicar API en Release
+        run: dotnet publish backend/TransporteUnab.Api/TransporteUnab.Api.csproj -c Release -o ./publish
+
+      - name: Inyectar cadena de conexion desde Secret
+        env:
+          DB_CONN: ${{ secrets.DB_CONNECTION_STRING }}
+        run: |
+          python3 - << 'EOF'
+          import json, os
+          path = "./publish/appsettings.json"
+          with open(path, "r", encoding="utf-8") as f:
+              data = json.load(f)
+          conn = os.environ.get("DB_CONN", "").strip()
+          if conn:
+              data["ConnectionStrings"]["DefaultConnection"] = conn
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(data, f, indent=2)
+          EOF
+
+      - name: Pausar IIS (app_offline.htm)
+        run: |
+          echo "Actualizando API..." > app_offline.htm
+          curl -s --ftp-pasv -T app_offline.htm -u "${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}" "ftp://${{ secrets.FTP_SERVER }}/wwwroot/app_offline.htm" || true
+
+      - name: Subir archivos compilados por FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./publish/
+          server-dir: /wwwroot/
+          dangerous-clean-slate: false
+
+      - name: Reactivar IIS (eliminar app_offline.htm)
+        if: always()
+        run: |
+          curl -s --ftp-pasv -Q "DELE /wwwroot/app_offline.htm" -u "${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}" "ftp://${{ secrets.FTP_SERVER }}/" || true
