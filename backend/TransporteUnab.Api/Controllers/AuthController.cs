@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TransporteUnab.Api.Data;
+using TransporteUnab.Api.Infraestructura;
 using TransporteUnab.Api.Models;
 
 namespace TransporteUnab.Api.Controllers;
@@ -18,9 +19,13 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
+        if (string.IsNullOrWhiteSpace(req.nombre_usuario) || string.IsNullOrEmpty(req.contrasenia))
+            throw new ReglaException("Ingrese usuario y contraseña.");
+
+        // PENDIENTE (seguridad, fuera de alcance): la contraseña se compara en texto plano.
         var user = await _db.Usuarios
             .Include(u => u.Rol)
-            .FirstOrDefaultAsync(u => u.nombre_usuario == req.nombre_usuario && u.contrasenia == req.contrasenia && u.activo);
+            .FirstOrDefaultAsync(u => u.nombre_usuario == req.nombre_usuario.Trim() && u.contrasenia == req.contrasenia && u.activo);
 
         if (user is null)
             return Unauthorized(new { message = "Usuario o contraseña incorrectos." });
@@ -28,7 +33,7 @@ public class AuthController : ControllerBase
         var sesion = new RegistroSesion
         {
             id_usuario = user.id_usuario,
-            fecha_hora_inicio = DateTime.Now
+            fecha_hora_inicio = HoraPeru.Ahora
         };
         _db.RegistrosSesion.Add(sesion);
         await _db.SaveChangesAsync();
@@ -49,7 +54,9 @@ public class AuthController : ControllerBase
         var sesion = await _db.RegistrosSesion.FindAsync(req.id_sesion);
         if (sesion is not null && sesion.fecha_hora_salida is null)
         {
-            sesion.fecha_hora_salida = DateTime.Now;
+            // CK_RegistroSesion_Fechas: salida >= inicio (el inicio pudo grabarse con otro reloj).
+            var ahora = HoraPeru.Ahora;
+            sesion.fecha_hora_salida = ahora < sesion.fecha_hora_inicio ? sesion.fecha_hora_inicio : ahora;
             await _db.SaveChangesAsync();
         }
         return NoContent();
