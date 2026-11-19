@@ -2,12 +2,34 @@ import { CONFIG } from '../config.js';
 import { api } from '../api.js';
 import { esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js';
 
+const EST_AREAS_KEY = 'unab_estimacion_areas';
+
+function leerAreasLocales() {
+  try {
+    return JSON.parse(localStorage.getItem(EST_AREAS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function guardarAreaLocal(fecha, destino, areaNombre) {
+  if (!areaNombre) return;
+  try {
+    const mapa = leerAreasLocales();
+    mapa[`${fecha}|${destino}`] = areaNombre;
+    localStorage.setItem(EST_AREAS_KEY, JSON.stringify(mapa));
+  } catch {}
+}
+
 export async function renderEstimacion(container) {
-  const [unidades, rutas, historial] = await Promise.all([
+  const [unidades, rutasYCostos, historial] = await Promise.all([
     api.getUnidades(),
-    api.getRutasYCostos().then((r) => r.rutas),
+    api.getRutasYCostos(),
     api.getEstimaciones(),
   ]);
+  const rutas = rutasYCostos.rutas || [];
+  const areas = rutasYCostos.areas || [];
+  const areasLocales = leerAreasLocales();
 
   if (!container.isConnected) return;
 
@@ -28,11 +50,18 @@ export async function renderEstimacion(container) {
             <label class="field-label">Fecha estimada</label>
             <input name="fecha" type="date" class="input" value="${CONFIG.REFERENCE_DATE}" required />
           </div>
-          <div class="field-group" style="grid-column:1/-1;">
+          <div class="field-group">
             <label class="field-label">Ruta sugerida (opcional)</label>
             <select id="est-ruta-preset" class="select">
               <option value="">Personalizado</option>
               ${rutas.map((r) => `<option value="${r.km_referencia}" data-dest="${escapeHtml(r.punto_llegada)}">${escapeHtml(r.punto_salida)} → ${escapeHtml(r.punto_llegada)} (${r.km_referencia} km)</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Área solicitante (opcional)</label>
+            <select name="id_area" id="est-area" class="select">
+              <option value="">Sin área específica</option>
+              ${areas.map((a) => `<option value="${a.id_area}">${escapeHtml(a.nombre)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group" style="grid-column:1/-1;">
@@ -70,20 +99,25 @@ export async function renderEstimacion(container) {
             <thead>
               <tr>
                 <th>FECHA</th>
+                <th>ÁREA</th>
                 <th>DESTINO</th>
                 <th class="num-right">DISTANCIA</th>
                 <th class="num-right">COSTO (S/)</th>
               </tr>
             </thead>
             <tbody>
-              ${historial.map((h) => `
+              ${historial.map((h) => {
+                const areaTxt = h.area_nombre || areasLocales[`${String(h.fecha || '').slice(0, 10)}|${h.destino}`] || '—';
+                return `
                 <tr>
                   <td>${formatDateES(h.fecha)}</td>
+                  <td>${escapeHtml(areaTxt)}</td>
                   <td>${escapeHtml(h.destino)}</td>
                   <td class="num-right">${h.distancia_km} km</td>
                   <td class="num-right"><strong>S/ ${formatNumber(h.costo_estimado, 2)}</strong></td>
                 </tr>
-              `).join('') || `<tr><td colspan="4" style="text-align:center;color:var(--text-secondary);">Aún no hay estimaciones guardadas.</td></tr>`}
+              `;
+              }).join('') || `<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">Aún no hay estimaciones guardadas.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -124,16 +158,23 @@ export async function renderEstimacion(container) {
   document.getElementById('est-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const areaSel = document.getElementById('est-area');
+    const idArea = fd.get('id_area') ? Number(fd.get('id_area')) : null;
+    const areaNombre = idArea && areaSel.selectedOptions[0] ? areaSel.selectedOptions[0].textContent : '';
+    const fecha = fd.get('fecha');
+    const destino = fd.get('destino').trim();
 
     try {
       await api.saveEstimacion({
         id_unidad: Number(fd.get('id_unidad')),
-        fecha: fd.get('fecha'),
-        destino: fd.get('destino').trim(),
+        id_area: idArea,
+        fecha,
+        destino,
         distancia_km: Number(fd.get('distancia_km')),
         rendimiento_promedio: Number(fd.get('rendimiento_promedio')),
         precio_galon: Number(fd.get('precio_galon')),
       });
+      guardarAreaLocal(fecha, destino, areaNombre);
     } catch (err) {
       showToast(err.message, 'error');
       return;
