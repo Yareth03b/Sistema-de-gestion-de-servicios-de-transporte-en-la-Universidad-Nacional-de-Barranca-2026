@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js?v=5';
+import { CONFIG } from './config.js?v=6';
 
 export function formatNumber(n, decimals = 0) {
   if (n == null || !Number.isFinite(Number(n))) return '—';
@@ -42,13 +42,22 @@ export function opcionesPeriodo(registros, periodo) {
   return '<option value="">Todos los periodos</option>' + opciones.join('');
 }
 
-// La tabla recibe los registros ya ordenados y filtrados. El historial sigue accesible.
 export function tablaDatos(columnas, filas, vacio = 'Sin registros para mostrar.') {
   return `<div class="table-wrap"><table class="data-table">
     <thead><tr>${columnas.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead>
     <tbody>${filas.map(f => `<tr>${f.map(v => `<td>${escapeHtml(v ?? '—')}</td>`).join('')}</tr>`).join('')
       || `<tr><td colspan="${columnas.length}">${escapeHtml(vacio)}</td></tr>`}</tbody>
   </table></div>`;
+}
+
+export function exportarCsv(nombre, filas) {
+  const texto = filas.map(fila => fila.map(valor => '"' + String(valor ?? '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  const url = URL.createObjectURL(new Blob(['\uFEFF', texto], { type: 'text/csv;charset=utf-8' }));
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = nombre;
+  enlace.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function limitarTabla(tabla, total) {

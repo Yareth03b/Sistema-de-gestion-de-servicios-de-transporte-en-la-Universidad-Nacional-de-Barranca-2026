@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=5';
-import { showToast } from './utils.js?v=5';
+import { CONFIG } from './config.js?v=6';
+import { showToast } from './utils.js?v=6';
 
 let apiOnline = false;
 
@@ -129,8 +129,10 @@ export const api = {
     return request(`/unidades/${id}/historial`);
   },
 
-  async saveDocumento(payload) {
-    return request('/unidades/documentos', { method: 'POST', body: JSON.stringify(payload) });
+  async saveDocumento(payload, id = null) {
+    return request(id ? `/unidades/documentos/${id}` : '/unidades/documentos', {
+      method: id ? 'PUT' : 'POST', body: JSON.stringify(payload),
+    });
   },
 
   async saveIncidente(payload, id = null) {
@@ -202,6 +204,16 @@ export const api = {
   },
 
   // --- Reportes y Conciliación ---
+  async getReportePorUnidad(mes, unidad, dias) {
+    const params = new URLSearchParams({ mes, dias });
+    if (unidad) params.set('id_unidad', unidad);
+    return request('/reportes/por-unidad?' + params);
+  },
+
+  async getDetalleConciliacion(anio, trimestre) {
+    return request('/conciliacion/detalle?' + new URLSearchParams({ anio, trimestre }));
+  },
+
   async getCierres() {
     return request('/reportes/trimestral');
   },

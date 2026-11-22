@@ -1,5 +1,5 @@
-import { api } from '../api.js?v=5';
-import { mostrarErrorFormulario, limitarTabla, formatNumber, openModal, showToast, escapeHtml } from '../utils.js?v=5';
+import { api } from '../api.js?v=6';
+import { mesActual, tablaDatos, mostrarErrorFormulario, limitarTabla, formatNumber, openModal, showToast, escapeHtml } from '../utils.js?v=6';
 
 export async function renderConciliacion(container) {
   const reportes = await api.getConciliacion();
@@ -52,6 +52,33 @@ export async function renderConciliacion(container) {
   `;
 
   limitarTabla(container.querySelector('table'), reportes.length);
+  const mes = mesActual();
+  const actual = Number(mes.slice(0, 4));
+  const trimestreActual = Math.ceil(Number(mes.slice(5, 7)) / 3);
+  container.insertAdjacentHTML('beforeend', `<section class="card"><h2 class="card-title">Detalle por unidad</h2>
+    <div class="filters-bar"><label>Año <select class="select" name="anio-detalle">
+    ${Array.from({ length: actual - 1999 }, (_, i) => `<option>${actual - i}</option>`).join('')}</select></label>
+    <label>Trimestre <select class="select" name="trimestre-detalle">
+    ${['I', 'II', 'III', 'IV'].map((t, i) => `<option value="${i + 1}" ${i + 1 === trimestreActual ? 'selected' : ''}>${t}</option>`).join('')}
+    </select></label></div><div data-detalle aria-live="polite"></div></section>`);
+  const anio = container.querySelector('[name=anio-detalle]');
+  const trimestre = container.querySelector('[name=trimestre-detalle]');
+  const detalle = container.querySelector('[data-detalle]');
+  let solicitud = 0;
+  const cargar = async () => {
+    const actual = ++solicitud;
+    detalle.textContent = 'Cargando detalle…';
+    try {
+      const d = await api.getDetalleConciliacion(anio.value, trimestre.value);
+      if (!detalle.isConnected || solicitud !== actual) return;
+      detalle.innerHTML = `<p>Vales: ${d.cantidad_vales} · Sistema: ${formatNumber(d.galones_sistema, 2)} gal ·
+        ${d.reporte ? `Grifo: ${formatNumber(d.reporte.galones_total, 2)} gal · Diferencia: ${formatNumber(d.diferencia, 2)} gal` : 'Sin reporte del grifo'}</p>
+        ${tablaDatos(['Unidad', 'Vales', 'Números de vale', 'Galones'], d.unidades.map(u =>
+          [u.placa, u.cantidad_vales, u.nros_vale.join(', '), formatNumber(u.galones, 2)]))}`;
+    } catch (err) { if (actual === solicitud) detalle.textContent = err.message; }
+  };
+  anio.onchange = trimestre.onchange = cargar;
+  await cargar();
   const openGrifoModal = () => {
     openModal({
       title: 'Registrar reporte del grifo',
@@ -59,15 +86,12 @@ export async function renderConciliacion(container) {
         <form id="grifo-form" class="form-grid-2">
           <div class="field-group">
             <label class="field-label">Año</label>
-            <input name="anio" type="number" min="2000" class="input" value="${new Date().getFullYear()}" required />
+            <input name="anio" type="number" min="2000" class="input" value="${anio.value}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Trimestre</label>
             <select name="trimestre" class="select">
-              <option value="4">Trimestre IV</option>
-              <option value="3">Trimestre III</option>
-              <option value="2">Trimestre II</option>
-              <option value="1">Trimestre I</option>
+              ${['I', 'II', 'III', 'IV'].map((t, i) => `<option value="${i + 1}" ${i + 1 === Number(trimestre.value) ? 'selected' : ''}>Trimestre ${t}</option>`).join('')}
             </select>
           </div>
           <div class="field-group" style="grid-column:1/-1;">

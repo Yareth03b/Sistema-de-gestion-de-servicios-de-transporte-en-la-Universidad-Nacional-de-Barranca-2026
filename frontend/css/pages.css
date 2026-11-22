@@ -394,3 +394,14 @@
     gap: 4px;
   }
 }
+
+.tarjetas-flota, .resumen-totales {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: var(--space-4);
+}
+.resumen-totales { margin-block: var(--space-4); }
+.unidad-card { display: grid; align-content: start; gap: var(--space-3); }
+.unidad-card .card-header { flex-wrap: wrap; margin-bottom: 0; }
+.acciones-unidad, .etiquetas-documentos { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.etiquetas-documentos { margin-top: var(--space-2); }

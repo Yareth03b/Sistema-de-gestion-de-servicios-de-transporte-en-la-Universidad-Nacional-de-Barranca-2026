@@ -1,14 +1,21 @@
-import { CONFIG } from '../config.js?v=5';
-import { getSession } from './auth.js?v=5';
-import { api } from '../api.js?v=5';
-import { tablaDatos, formatHora, formatNumber, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=5';
+import { CONFIG } from '../config.js?v=6';
+import { getSession } from './auth.js?v=6';
+import { api } from '../api.js?v=6';
+import { tablaDatos, formatHora, formatNumber, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=6';
 
-import { abrirSalida } from './mantenimiento.js?v=5';
+import { abrirSalida, proximosPorKilometraje } from './mantenimiento.js?v=6';
 
 function vencimiento(doc) {
   if (!doc || doc.dias_para_vencer == null) return 'Sin vencimiento registrado';
   if (doc.vencido) return `Vencido hace ${Math.abs(doc.dias_para_vencer)} días`;
   return doc.dias_para_vencer === 0 ? 'Vence hoy' : `Vence en ${doc.dias_para_vencer} días`;
+}
+
+const tiposPrincipales = ['SOAT', 'Revisión Técnica'];
+
+function documentoMasReciente(documentos, tipo) {
+  return documentos.filter(d => d.tipo.localeCompare(tipo, 'es', { sensitivity: 'base' }) === 0)
+    .sort((a, b) => b.fecha_vencimiento.localeCompare(a.fecha_vencimiento))[0];
 }
 
 function estadoUnidad(u) {
@@ -19,6 +26,7 @@ function estadoUnidad(u) {
 
 export async function renderUnidades(container, searchQuery = '') {
   const unidades = await api.getUnidades(true);
+  let fichaSolicitada = 0;
 
   const paintList = () => {
     const q = searchQuery.trim().toLowerCase();
@@ -28,48 +36,38 @@ export async function renderUnidades(container, searchQuery = '') {
 
     if (!container.isConnected) return;
 
-    container.innerHTML = `
-      <section class="card">
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>PLACA</th>
-                <th>TIPO</th>
-                <th>MARCA / MODELO</th>
-                <th>CÓD. PATRIMONIAL</th>
-                <th class="num-right">CAPACIDAD</th>
-                <th class="num-right">KM ACTUAL</th>
-                <th>ESTADO</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${filtered.map((u) => `
-                <tr>
-                  <td><span class="plate-badge">${escapeHtml(u.placa)}</span></td>
-                  <td>${escapeHtml(u.tipo)} ${esBus(u) ? escapeHtml('numero_bus' in u ? u.numero_bus : u.placa.replace(/\D/g, '').match(/\d{3}$/)?.[0]) : ''}</td>
-                  <td>${escapeHtml(u.marca)} · ${escapeHtml(u.modelo)}</td>
-                  <td>${escapeHtml(u.codigo_patrimonial || '-')}</td>
-                  <td class="num-right">${u.capacidad || '-'}</td>
-                  <td class="num-right">${formatSpaceInt(u.km_actual || 0)} km</td>
-                  <td>${estadoUnidad(u)}</td>
-                  <td style="white-space:nowrap;">
-                    ${u.en_taller ? `<button class="btn-link" data-salida-unidad="${u.id_unidad}">Salió del taller</button>` : ''}
-                    <button class="btn-link" data-hist-unidad="${u.id_unidad}">Ver historial</button>
-                    <button class="btn-link" data-edit-unidad="${u.id_unidad}">Editar</button>
-                  ${u.activo && 'numero_bus' in u ? `<button type="button" class="btn-link" data-baja="${u.id_unidad}">Dar de baja</button>` : ''}
-                  </td>
-                </tr>
-              `).join('') || '<tr><td colspan="8">Sin registros para mostrar.</td></tr>'}
-            </tbody>
-          </table>
+    container.innerHTML = `<div class="tarjetas-flota">${filtered.map(u => `
+      <article class="card unidad-card">
+        <div class="card-header"><h2 class="card-title">${escapeHtml(u.placa)}</h2>${estadoUnidad(u)}</div>
+        <p>${escapeHtml([u.tipo, u.marca, u.modelo].filter(Boolean).join(' · '))}</p>
+        <strong>${formatSpaceInt(u.km_actual)} km</strong>
+        ${esBus(u) ? `<div data-resumen-bus="${u.id_unidad}">Cargando documentos y preventivo…</div>` : '<p>Solo vales de combustible</p>'}
+        <div class="acciones-unidad">
+          <button class="btn-link" data-hist-unidad="${u.id_unidad}">Ver ficha e historial</button>
+          <button class="btn-link" data-edit-unidad="${u.id_unidad}">Editar</button>
+          ${u.en_taller ? `<button class="btn-link" data-salida-unidad="${u.id_unidad}">Salió del taller</button>` : ''}
+          ${u.activo ? `<button class="btn-link" data-baja="${u.id_unidad}">Dar de baja</button>` : ''}
         </div>
-        <div class="table-footer">
-          <span>Mostrando ${filtered.length} de ${unidades.length} unidades</span>
-        </div>
-      </section>
-    `;
+      </article>`).join('') || '<p>Sin unidades para mostrar.</p>'}</div>`;
+
+    container.querySelectorAll('[data-resumen-bus]').forEach(async resumen => {
+      const id = Number(resumen.dataset.resumenBus);
+      const u = unidades.find(item => item.id_unidad === id);
+      try {
+        const hist = await api.getUnidadHistorial(id);
+        if (!resumen.isConnected) return;
+        const [proximo] = proximosPorKilometraje([u], hist.mantenimientos);
+        const faltan = proximo?.km_faltantes;
+        const sinReferencia = proximo?.km_ultimo_preventivo > u.km_actual
+          ? 'El km del último preventivo supera la lectura actual.' : 'Sin referencia de mantenimiento preventivo.';
+        const preventivo = faltan == null ? sinReferencia
+          : faltan < 0 ? `Mantenimiento excedido por ${formatSpaceInt(-faltan)} km` : `Mantenimiento en ${formatSpaceInt(faltan)} km`;
+        resumen.innerHTML = `<p>${preventivo}</p><div class="etiquetas-documentos">${tiposPrincipales.map(tipo => {
+          const doc = documentoMasReciente(hist.documentos, tipo);
+          return `<span class="pill ${doc?.vencido ? 'pill-urgent' : 'pill-info'}">${tipo} · ${doc ? vencimiento(doc) : 'Sin registrar'}</span>`;
+        }).join('')}</div>`;
+      } catch (err) { resumen.textContent = err.message; }
+    });
 
     container.querySelectorAll('[data-salida-unidad]').forEach(btn => {
       const u = unidades.find(u => u.id_unidad === Number(btn.dataset.salidaUnidad));
@@ -101,6 +99,7 @@ export async function renderUnidades(container, searchQuery = '') {
   };
 
   const openHistorial = async (idUnidad) => {
+    const solicitud = ++fichaSolicitada;
     let hist;
     try {
       hist = await api.getUnidadHistorial(idUnidad);
@@ -109,7 +108,7 @@ export async function renderUnidades(container, searchQuery = '') {
       return;
     }
     const u = hist.unidad;
-    if (!container.isConnected) return;
+    if (!container.isConnected || solicitud !== fichaSolicitada) return;
     container.innerHTML = `
       <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
         <div style="display:flex;align-items:center;gap:12px;">
@@ -124,23 +123,27 @@ export async function renderUnidades(container, searchQuery = '') {
         </div>
       </div>
 
+      <p class="card-meta">Código patrimonial: ${escapeHtml(u.codigo_patrimonial || '—')} · Capacidad: ${formatSpaceInt(u.capacidad)}</p>
       <div>
         <section class="card">
           <div class="card-header">
             <h2 class="card-title">Documentos de la unidad</h2>
           </div>
-          <table class="data-table">
-            <thead><tr><th>TIPO</th><th>NÚMERO</th><th>VENCIMIENTO</th></tr></thead>
+          ${esBus(u) ? tiposPrincipales.filter(tipo => !documentoMasReciente(hist.documentos, tipo)).map(tipo =>
+            `<button class="btn-link" data-tipo-doc="${tipo}">Registrar ${tipo}</button>`).join(' ') : ''}
+          <div class="table-wrap"><table class="data-table">
+            <thead><tr><th>TIPO</th><th>NÚMERO</th><th>VENCIMIENTO</th><th></th></tr></thead>
             <tbody>
               ${hist.documentos.map((d) => `
                 <tr>
                   <td><strong>${escapeHtml(d.tipo)}</strong></td>
                   <td>${escapeHtml(d.numero)}</td>
                   <td>${formatDateES(d.fecha_vencimiento)} · ${vencimiento(d)}</td>
+                  <td>${esBus(u) ? `<button class="btn-link" data-edit-doc="${d.id_documento}">Editar documento</button>` : ''}</td>
                 </tr>
-              `).join('') || `<tr><td colspan="3" style="color:var(--text-secondary);">Sin documentos registrados.</td></tr>`}
+              `).join('') || `<tr><td colspan="4" style="color:var(--text-secondary);">Sin documentos registrados.</td></tr>`}
             </tbody>
-          </table>
+          </table></div>
         </section>
 
         <nav class="tabs-bar" aria-label="Historial de la unidad">
@@ -208,6 +211,12 @@ export async function renderUnidades(container, searchQuery = '') {
     document.getElementById('back-unidades').addEventListener('click', () => container.dispatchEvent(new Event('actualizar-vista', { bubbles: true })));
     document.getElementById('btn-nuevo-inc').addEventListener('click', () => openIncidenteModal(idUnidad, null));
     document.getElementById('btn-nuevo-doc').addEventListener('click', () => openDocumentoModal(idUnidad));
+    container.querySelectorAll('[data-edit-doc]').forEach(btn => {
+      btn.onclick = () => openDocumentoModal(idUnidad, hist.documentos.find(d => d.id_documento === Number(btn.dataset.editDoc)));
+    });
+    container.querySelectorAll('[data-tipo-doc]').forEach(btn => {
+      btn.onclick = () => openDocumentoModal(idUnidad, null, btn.dataset.tipoDoc);
+    });
     container.querySelectorAll('[data-edit-inc]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const inc = hist.incidentes.find((x) => x.id_incidente === Number(btn.dataset.editInc));
@@ -256,26 +265,25 @@ export async function renderUnidades(container, searchQuery = '') {
     });
   };
 
-  const openDocumentoModal = (idUnidad) => {
+  const openDocumentoModal = (idUnidad, doc = null, tipo = 'SOAT') => {
     openModal({
-      title: 'Nuevo documento de unidad',
+      title: doc ? 'Editar documento' : 'Nuevo documento de unidad',
       bodyHtml: `
         <form id="doc-form" class="form-grid-2">
           <div class="field-group">
             <label class="field-label">Tipo</label>
             <select name="tipo" class="select">
-              <option value="SOAT">SOAT</option>
-              <option value="Revisión Técnica">Revisión Técnica</option>
-              <option value="Tarjeta de Propiedad">Tarjeta de Propiedad</option>
+              ${[...new Set([...tiposPrincipales, 'Tarjeta de Propiedad', doc?.tipo].filter(Boolean))].map(t =>
+                `<option ${(doc?.tipo || tipo) === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
             <label class="field-label">Número</label>
-            <input name="numero" class="input" required placeholder="CITV-2026-001" />
+            <input name="numero" class="input" maxlength="30" value="${escapeHtml(doc?.numero)}" required placeholder="CITV-2026-001" />
           </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Fecha de vencimiento</label>
-            <input name="fecha_vencimiento" type="date" class="input" required />
+            <input name="fecha_vencimiento" type="date" class="input" min="2000-01-01" max="2100-12-31" value="${doc?.fecha_vencimiento.slice(0, 10) || ''}" required />
           </div>
           <div class="modal-actions" style="grid-column:1/-1;">
             <button type="submit" class="btn btn-primary">Guardar documento</button>
@@ -292,12 +300,12 @@ export async function renderUnidades(container, searchQuery = '') {
               tipo: fd.get('tipo'),
               numero: fd.get('numero').trim(),
               fecha_vencimiento: fd.get('fecha_vencimiento'),
-            });
+            }, doc?.id_documento);
           } catch (err) {
             showToast(err.message, 'error');
             return;
           }
-          showToast('Documento registrado.', 'success');
+          showToast(doc ? 'Documento actualizado.' : 'Documento registrado.', 'success');
           close();
           openHistorial(idUnidad);
         });

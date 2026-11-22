@@ -1,6 +1,6 @@
-import { CONFIG } from '../config.js?v=5';
-import { api } from '../api.js?v=5';
-import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js?v=5';
+import { CONFIG } from '../config.js?v=6';
+import { api } from '../api.js?v=6';
+import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js?v=6';
 
 const EST_AREAS_KEY = 'unab_estimacion_areas';
 
