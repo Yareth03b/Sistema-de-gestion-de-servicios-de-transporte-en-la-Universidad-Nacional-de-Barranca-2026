@@ -90,7 +90,7 @@ public class TurnosController : ControllerBase
         await _db.SaveChangesAsync();
 
         await AvisarCierres(turno.fecha);
-        return Ok(turno);
+        return Ok(await ConAviso(turno));
     }
 
     [HttpPut("{id:int}")]
@@ -113,7 +113,7 @@ public class TurnosController : ControllerBase
         await _db.SaveChangesAsync();
 
         await AvisarCierres(fechaAnterior, turno.fecha);
-        return Ok(turno);
+        return Ok(await ConAviso(turno));
     }
 
     /// <summary>No hay anulación de turnos (decisión 12): se corrigen con PUT.</summary>
@@ -182,6 +182,29 @@ public class TurnosController : ControllerBase
         t.km_inicial = dto.km_inicial;
         t.km_final = dto.km_final;
         t.observaciones = Reglas.Limpiar(dto.observaciones);
+    }
+
+    /// <summary>
+    /// Mismos campos que antes (la entidad) más «aviso»: texto para mostrar si el bus figura en taller
+    /// en la fecha del turno. No bloquea el registro. null si no hay nada que avisar.
+    /// </summary>
+    private async Task<object> ConAviso(BitacoraTurno t)
+    {
+        var placa = await _db.Unidades.Where(u => u.id_unidad == t.id_unidad).Select(u => u.placa).FirstOrDefaultAsync();
+        return new
+        {
+            t.id_turno,
+            t.id_unidad,
+            t.id_conductor,
+            t.fecha,
+            t.hora_salida,
+            t.hora_llegada,
+            t.km_inicial,
+            t.km_final,
+            t.km_recorridos,
+            t.observaciones,
+            aviso = await Taller.AvisoTurno(_db, t.id_unidad, placa, t.fecha)
+        };
     }
 
     private async Task AvisarCierres(params DateTime[] fechas)
