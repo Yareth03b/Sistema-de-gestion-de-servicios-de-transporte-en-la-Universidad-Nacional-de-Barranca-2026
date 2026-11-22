@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js?v=4';
+import { CONFIG } from './config.js?v=5';
 
 export function formatNumber(n, decimals = 0) {
   if (n == null || !Number.isFinite(Number(n))) return '—';
@@ -43,6 +43,14 @@ export function opcionesPeriodo(registros, periodo) {
 }
 
 // La tabla recibe los registros ya ordenados y filtrados. El historial sigue accesible.
+export function tablaDatos(columnas, filas, vacio = 'Sin registros para mostrar.') {
+  return `<div class="table-wrap"><table class="data-table">
+    <thead><tr>${columnas.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead>
+    <tbody>${filas.map(f => `<tr>${f.map(v => `<td>${escapeHtml(v ?? '—')}</td>`).join('')}</tr>`).join('')
+      || `<tr><td colspan="${columnas.length}">${escapeHtml(vacio)}</td></tr>`}</tbody>
+  </table></div>`;
+}
+
 export function limitarTabla(tabla, total) {
   const filas = Array.from(tabla.tBodies[0].rows);
   const pie = document.createElement('div');
