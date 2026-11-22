@@ -413,6 +413,8 @@
   box-shadow: var(--shadow-modal);
 }
 
+.toast.warning { background: #815100; color: white; }
+
 .toast.success {
   background-color: #0F5132;
 }
