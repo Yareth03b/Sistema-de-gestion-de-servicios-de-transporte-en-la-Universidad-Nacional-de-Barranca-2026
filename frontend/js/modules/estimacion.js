@@ -1,35 +1,43 @@
-import { CONFIG } from '../config.js?v=6';
-import { api } from '../api.js?v=6';
-import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js?v=8';
-
-const EST_AREAS_KEY = 'unab_estimacion_areas';
-
-function leerAreasLocales() {
-  try {
-    return JSON.parse(localStorage.getItem(EST_AREAS_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function guardarAreaLocal(fecha, destino, areaNombre) {
-  if (!areaNombre) return;
-  try {
-    const mapa = leerAreasLocales();
-    mapa[`${fecha}|${destino}`] = areaNombre;
-    localStorage.setItem(EST_AREAS_KEY, JSON.stringify(mapa));
-  } catch {}
-}
+import { CONFIG } from '../config.js?v=9';
+import { api } from '../api.js?v=9';
+import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js?v=9';
+import { renderSolicitudes, fechaHora } from './solicitudes.js?v=9';
 
 export async function renderEstimacion(container) {
+  container.innerHTML = `<div class="tabs-bar">
+    <button type="button" class="tab-btn" data-vista="solicitudes">Solicitudes</button>
+    <button type="button" class="tab-btn" data-vista="calculadora">Calculadora</button>
+  </div><div data-contenido></div>`;
+  const abrir = async (vista, solicitud = null) => {
+    const contenido = document.createElement('div');
+    contenido.dataset.contenido = '';
+    container.querySelector('[data-contenido]').replaceWith(contenido);
+    container.querySelectorAll('[data-vista]').forEach(b => {
+      const activo = b.dataset.vista === vista;
+      b.classList.toggle('active', activo);
+      b.setAttribute('aria-pressed', String(activo));
+    });
+    contenido.textContent = 'Cargando…';
+    try {
+      if (vista === 'solicitudes') await renderSolicitudes(contenido, s => abrir('calculadora', s));
+      else await renderCalculadora(contenido, solicitud, () => abrir(solicitud ? 'solicitudes' : 'calculadora'));
+    } catch (err) {
+      contenido.textContent = err.message;
+    }
+  };
+  container.querySelectorAll('[data-vista]').forEach(b => {
+    b.onclick = () => { if (!b.classList.contains('active')) abrir(b.dataset.vista); };
+  });
+  await abrir('solicitudes');
+}
+
+async function renderCalculadora(container, solicitud, alGuardar) {
   const [unidades, rutasYCostos, historial] = await Promise.all([
     api.getUnidades(),
     api.getRutasYCostos(),
     api.getEstimaciones(),
   ]);
   const rutas = rutasYCostos.rutas || [];
-  const areas = rutasYCostos.areas || [];
-  const areasLocales = leerAreasLocales();
 
   if (!container.isConnected) return;
 
@@ -39,16 +47,27 @@ export async function renderEstimacion(container) {
         <div class="card-header">
           <h2 class="card-title">Calculadora de costo de viaje</h2>
         </div>
+        ${solicitud ? `<dl class="solicitud-resumen">
+          ${Object.entries({
+            Solicitud: solicitud.codigo, Área: solicitud.area_nombre, Encargado: solicitud.encargado,
+            Salida: fechaHora(solicitud.fecha_salida, solicitud.hora_salida),
+            Regreso: fechaHora(solicitud.fecha_regreso, solicitud.hora_regreso),
+            Procedencia: solicitud.lugar_procedencia, Destino: solicitud.lugar_destino,
+            Pasajeros: solicitud.pasajeros, Motivo: solicitud.motivo,
+            Estado: solicitud.estado, Observaciones: solicitud.observaciones || '—',
+          }).map(([etiqueta, valor]) => `<div><dt>${etiqueta}</dt><dd>${escapeHtml(valor)}</dd></div>`).join('')}
+        </dl>` : ''}
         <form id="est-form" class="form-grid-2">
           <div class="field-group">
             <label class="field-label">Unidad</label>
             <select name="id_unidad" class="select" required>
+              <option value="">Selecciona un bus</option>
               ${unidades.filter(esBus).map((u) => `<option value="${u.id_unidad}">${escapeHtml(u.placa)} · ${escapeHtml(u.tipo)}</option>`).join('')}
             </select>
           </div>
           <div class="field-group">
             <label class="field-label">Fecha estimada</label>
-            <input name="fecha" type="date" class="input" value="${CONFIG.REFERENCE_DATE}" required />
+            <input name="fecha" type="date" class="input" value="${solicitud?.fecha_salida || CONFIG.REFERENCE_DATE}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Ruta sugerida (opcional)</label>
@@ -57,16 +76,9 @@ export async function renderEstimacion(container) {
               ${rutas.map((r) => `<option value="${r.km_referencia}" data-dest="${escapeHtml(r.punto_llegada)}">${escapeHtml(r.punto_salida)} → ${escapeHtml(r.punto_llegada)} (${r.km_referencia} km)</option>`).join('')}
             </select>
           </div>
-          <div class="field-group">
-            <label class="field-label">Área solicitante (opcional)</label>
-            <select name="id_area" id="est-area" class="select">
-              <option value="">Sin área específica</option>
-              ${areas.map((a) => `<option value="${a.id_area}">${escapeHtml(a.nombre)}</option>`).join('')}
-            </select>
-          </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Destino</label>
-            <input name="destino" maxlength="100" id="est-destino" class="input" required placeholder="Ej. Lima - Ciudad Universitaria" />
+            <input name="destino" maxlength="100" id="est-destino" class="input" required value="${escapeHtml(solicitud?.lugar_destino)}" placeholder="Ej. Lima - Ciudad Universitaria" />
           </div>
           <div class="field-group">
             <label class="field-label">Distancia de ida y vuelta (km)</label>
@@ -99,6 +111,7 @@ export async function renderEstimacion(container) {
             <thead>
               <tr>
                 <th>FECHA</th>
+                <th>SOLICITUD</th>
                 <th>ÁREA</th>
                 <th>DESTINO</th>
                 <th class="num-right">DISTANCIA</th>
@@ -106,18 +119,16 @@ export async function renderEstimacion(container) {
               </tr>
             </thead>
             <tbody>
-              ${historial.map((h) => {
-                const areaTxt = h.area_nombre || areasLocales[`${String(h.fecha || '').slice(0, 10)}|${h.destino}`] || '—';
-                return `
+              ${historial.map(h => `
                 <tr>
                   <td>${formatDateES(h.fecha)}</td>
-                  <td>${escapeHtml(areaTxt)}</td>
+                  <td>${escapeHtml(h.codigo_solicitud || '—')}</td>
+                  <td>${escapeHtml(h.area_nombre || '—')}</td>
                   <td>${escapeHtml(h.destino)}</td>
                   <td class="num-right">${h.distancia_km} km</td>
                   <td class="num-right"><strong>S/ ${formatNumber(h.costo_estimado, 2)}</strong></td>
                 </tr>
-              `;
-              }).join('') || `<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">Aún no hay estimaciones guardadas.</td></tr>`}
+              `).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">Aún no hay estimaciones guardadas.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -151,7 +162,7 @@ export async function renderEstimacion(container) {
     const opt = e.target.selectedOptions[0];
     if (e.target.value) {
       kmEl.value = Number(e.target.value) * 2;
-      document.getElementById('est-destino').value = opt.dataset.dest || '';
+      if (!solicitud) document.getElementById('est-destino').value = opt.dataset.dest || '';
       calc();
     }
   });
@@ -161,28 +172,28 @@ export async function renderEstimacion(container) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const areaSel = document.getElementById('est-area');
-    const idArea = fd.get('id_area') ? Number(fd.get('id_area')) : null;
-    const areaNombre = idArea && areaSel.selectedOptions[0] ? areaSel.selectedOptions[0].textContent : '';
+    const boton = form.querySelector('[type=submit]');
+    if (boton.disabled) return;
+    boton.disabled = true;
     const fecha = fd.get('fecha');
     const destino = fd.get('destino').trim();
 
     try {
       await api.saveEstimacion({
         id_unidad: Number(fd.get('id_unidad')),
-        id_area: idArea,
+        id_solicitud: solicitud?.id_solicitud ?? null,
         fecha,
         destino,
         distancia_km: Number(fd.get('distancia_km')),
         rendimiento_promedio: Number(fd.get('rendimiento_promedio')),
         precio_galon: Number(fd.get('precio_galon')),
       });
-      guardarAreaLocal(fecha, destino, areaNombre);
     } catch (err) {
+      boton.disabled = false;
       mostrarErrorFormulario(form, err);
       return;
     }
     showToast('Estimación guardada.', 'success');
-    container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
+    if (container.isConnected) await alGuardar();
   });
 }
