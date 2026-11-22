@@ -1,5 +1,5 @@
-import { api } from '../api.js';
-import { rendimientoPeriodo, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=2';
+import { api } from '../api.js?v=3';
+import { mostrarErrorFormulario, mesActual, opcionesPeriodo, limitarTabla, rendimientoPeriodo, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=3';
 
 export async function renderReportes(container) {
   let [cierres, unidades, turnos, abasts] = await Promise.all([
@@ -9,13 +9,16 @@ export async function renderReportes(container) {
     api.getAbastecimientos(),
   ]);
 
+  let periodo = mesActual();
   let activeTab = 'unidad';
 
   const paint = () => {
-    const porUnidad = unidades.map((u) => {
-      const kmRec = turnos.filter((t) => t.id_unidad === u.id_unidad).reduce((s, t) => s + (t.km_final - t.km_inicial), 0);
-      const gal = abasts.filter((a) => a.id_unidad === u.id_unidad).reduce((s, a) => s + Number(a.galones), 0);
-      const vales = abasts.filter(a => a.id_unidad === u.id_unidad);
+    const turnosPeriodo = turnos.filter(t => t.fecha.startsWith(periodo));
+    const valesPeriodo = abasts.filter(v => v.fecha.startsWith(periodo));
+    const porUnidad = [...unidades].sort((a, b) => b.id_unidad - a.id_unidad).map((u) => {
+      const kmRec = turnosPeriodo.filter((t) => t.id_unidad === u.id_unidad).reduce((s, t) => s + (t.km_final - t.km_inicial), 0);
+      const vales = valesPeriodo.filter(a => a.id_unidad === u.id_unidad);
+      const gal = vales.reduce((s, a) => s + Number(a.galones), 0);
       const rend = rendimientoPeriodo(vales);
       return { placa: u.placa, tipo: u.tipo, kmRec, gal, rend, kmAcum: u.km_actual || 0 };
     });
@@ -39,7 +42,8 @@ export async function renderReportes(container) {
           <div class="card-header">
             <div>
               <h2 class="card-title">Reporte consolidado por unidad</h2>
-              <p class="card-meta">Kilometraje recorrido, consumo de combustible y rendimiento</p>
+              <label class="field-label" for="reporte-periodo">Periodo</label>
+              <select id="reporte-periodo" class="select">${opcionesPeriodo([...turnos, ...abasts], periodo)}</select>
             </div>
           </div>
           <div class="table-wrap">
@@ -93,7 +97,7 @@ export async function renderReportes(container) {
                     </tr>
                   </thead>
                   <tbody>
-                    ${(c.unidades || []).map((u) => `
+                    ${[...(c.unidades || [])].sort((a, b) => b.id_unidad - a.id_unidad).map((u) => `
                       <tr>
                         <td><span class="plate-badge">${escapeHtml(u.placa)}</span></td>
                         <td class="num-right">${formatSpaceInt(u.km_recorridos)}</td>
@@ -111,6 +115,12 @@ export async function renderReportes(container) {
       `}
     `;
 
+    if (activeTab === 'unidad') {
+      limitarTabla(container.querySelector('table'), porUnidad.length);
+      container.querySelector('#reporte-periodo').onchange = e => { periodo = e.target.value; paint(); };
+    } else {
+      container.querySelectorAll('table').forEach((tabla, i) => limitarTabla(tabla, cierres[i].unidades?.length || 0));
+    }
     container.querySelectorAll('[data-actualizar-cierre]').forEach(btn => {
       btn.onclick = async () => {
         const cierre = cierres.find(c => c.id_cierre === Number(btn.dataset.actualizarCierre));
@@ -143,7 +153,7 @@ export async function renderReportes(container) {
           <form id="cierre-form" class="form-grid-2">
             <div class="field-group">
               <label class="field-label">Año</label>
-              <input name="anio" type="number" class="input" value="${new Date().getFullYear()}" required />
+              <input name="anio" type="number" min="2000" class="input" value="${new Date().getFullYear()}" required />
             </div>
             <div class="field-group">
               <label class="field-label">Trimestre</label>
@@ -171,9 +181,7 @@ export async function renderReportes(container) {
               activeTab = 'trimestral';
               container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
             } catch (err) {
-              const errEl = document.getElementById('cierre-err');
-              errEl.textContent = err.message;
-              errEl.classList.remove('hidden');
+              mostrarErrorFormulario(e.target, err, err.codigo === 'V-06' ? 'trimestre' : null);
             }
           });
         },

@@ -1,7 +1,7 @@
-import { validarRegistro, confirmarPeriodo } from '../validaciones.js';
+import { falloCampo, campoRegistro, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=3';
 import { CONFIG } from '../config.js';
-import { api } from '../api.js';
-import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { api } from '../api.js?v=3';
+import { mostrarErrorFormulario, errorCampo, formatHora, mesActual, opcionesPeriodo, limitarTabla, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=3';
 
 export async function renderTurnos(container, searchQuery = '') {
   const [turnos, unidades, conductores, rutas] = await Promise.all([
@@ -15,8 +15,7 @@ export async function renderTurnos(container, searchQuery = '') {
   let filterText = searchQuery;
 
   const abasts = await api.getAbastecimientos();
-  let periodo = '';
-  const meses = [...new Set(turnos.map(r => r.fecha.slice(0, 7)))].sort().reverse();
+  let periodo = mesActual();
   const paint = () => {
     const filtered = turnos.filter((t) => {
       const matchBus = filterBus === 'all' || String(t.id_unidad) === filterBus;
@@ -34,10 +33,9 @@ export async function renderTurnos(container, searchQuery = '') {
       <section class="card">
         <div class="filters-bar">
           <div class="field-group">
-            <label class="field-label" for="turno-periodo">Periodo</label>
+            <label class="field-label" for="filtro-periodo">Periodo</label>
             <select id="filtro-periodo" class="select">
-              <option value="">Todos los periodos</option>
-              ${meses.map(m => `<option ${m === periodo ? 'selected' : ''}>${m}</option>`).join('')}
+              ${opcionesPeriodo(turnos, periodo)}
             </select>
           </div>
           <div class="field-group">
@@ -75,7 +73,7 @@ export async function renderTurnos(container, searchQuery = '') {
                   <td><span class="plate-badge">${escapeHtml(t.placa)}</span></td>
                   <td>${escapeHtml(t.conductor)}</td>
                   <td>${escapeHtml(t.ruta_texto)}</td>
-                  <td>${escapeHtml(t.hora_salida)} – ${escapeHtml(t.hora_llegada)}</td>
+                  <td>${escapeHtml(formatHora(t.hora_salida))} – ${escapeHtml(formatHora(t.hora_llegada))}</td>
                   <td class="num-right">${formatSpaceInt(t.km_inicial)}</td>
                   <td class="num-right">${formatSpaceInt(t.km_final)}</td>
                   <td class="num-right"><strong>${formatSpaceInt(t.km_final - t.km_inicial)}</strong></td>
@@ -85,12 +83,10 @@ export async function renderTurnos(container, searchQuery = '') {
             </tbody>
           </table>
         </div>
-        <div class="table-footer">
-          <span>Mostrando ${filtered.length} de ${turnos.length} registros</span>
-        </div>
       </section>
     `;
 
+    limitarTabla(container.querySelector('table'), filtered.length);
     document.getElementById('filtro-periodo').onchange = e => { periodo = e.target.value; paint(); };
     document.getElementById('turno-bus').addEventListener('change', (e) => {
       filterBus = e.target.value;
@@ -135,21 +131,14 @@ export async function renderTurnos(container, searchQuery = '') {
             <label class="field-label">Fecha</label>
             <input name="fecha" type="date" class="input" max="${today}" value="${existing?.fecha?.slice(0, 10) || today}" required />
           </div>
-          <div class="field-group">
-            <label class="field-label">Ruta</label>
-            <select name="id_ruta" class="select" ${existing && !Array.isArray(existing.id_rutas) ? 'disabled' : ''}>
-              ${existing ? `<option value="conservar" selected>Conservar: ${escapeHtml(existing.ruta_texto)}</option>` : ''}
-              <option value="0">Sin ruta de referencia</option>
-              ${rutas.map((r) => `<option value="${r.id_ruta}" >${escapeHtml(r.punto_salida)} ↔ ${escapeHtml(r.punto_llegada)} (${r.km_referencia} km)</option>`).join('')}
-            </select>
-          </div>
+          <div class="turno-recorrido">Km recorridos · <output name="recorrido" for="turno-form-km_inicial turno-form-km_final">—</output></div>
           <div class="field-group">
             <label class="field-label">Hora salida</label>
-            <input name="hora_salida" type="time" class="input" value="${existing?.hora_salida || '06:00'}" required />
+            <input name="hora_salida" type="time" class="input" value="${formatHora(existing?.hora_salida) || '06:00'}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Hora llegada</label>
-            <input name="hora_llegada" type="time" class="input" value="${existing?.hora_llegada || '14:00'}" required />
+            <input name="hora_llegada" type="time" class="input" value="${formatHora(existing?.hora_llegada) || '14:00'}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Km inicial</label>
@@ -161,8 +150,14 @@ export async function renderTurnos(container, searchQuery = '') {
           </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Observaciones</label>
-            <textarea name="observaciones" class="textarea" placeholder="Novedades del turno">${escapeHtml(existing?.observaciones || '')}</textarea>
+            <textarea name="observaciones" maxlength="300" class="textarea" placeholder="Novedades del turno">${escapeHtml(existing?.observaciones || '')}</textarea>
           </div>
+          <fieldset class="registro-panel" ${existing && !Array.isArray(existing.id_rutas) ? 'disabled' : ''}>
+            <legend>Rutas del turno</legend>
+            ${existing && !Array.isArray(existing.id_rutas) ? '<p>Se conserva la ruta registrada: ' + escapeHtml(existing.ruta_texto) + '</p>' : ''}
+            ${rutas.map(r => `<label><input type="checkbox" name="id_rutas" value="${r.id_ruta}" ${existing?.id_rutas?.includes(r.id_ruta) ? 'checked' : ''}>
+              ${escapeHtml(r.punto_salida)} → ${escapeHtml(r.punto_llegada)} · ${formatSpaceInt(r.km_referencia)} km</label>`).join('') || 'Sin rutas de referencia registradas.'}
+          </fieldset>
           <p id="turno-err" class="field-error hidden" style="grid-column:1/-1;"></p>
           <div class="modal-actions" style="grid-column:1/-1;">
             <button type="submit" class="btn btn-primary">${existing ? 'Guardar cambios' : 'Registrar turno'}</button>
@@ -170,7 +165,17 @@ export async function renderTurnos(container, searchQuery = '') {
         </form>
       `,
       onMount(close) {
-        document.getElementById('turno-form').addEventListener('submit', async (e) => {
+        const form = document.getElementById('turno-form');
+        const { km_inicial, km_final, recorrido } = form.elements;
+        const calcular = () => {
+          const km = km_final.valueAsNumber - km_inicial.valueAsNumber;
+          recorrido.value = km > 0 ? formatSpaceInt(km) + ' km' : '—';
+          errorCampo(km_final, km <= 0 ? 'El km final debe superar el inicial.' : '');
+        };
+        km_inicial.addEventListener('input', calcular);
+        km_final.addEventListener('input', calcular);
+        calcular();
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
           const fd = new FormData(e.target);
           const payload = {
@@ -184,21 +189,23 @@ export async function renderTurnos(container, searchQuery = '') {
             observaciones: fd.get('observaciones'),
           };
           try {
-            const ruta = fd.get('id_ruta');
-            if (existing && ruta === '0') payload.id_rutas = [];
-            else if (ruta && ruta !== 'conservar') payload.id_ruta = Number(ruta);
+            const seleccion = fd.getAll('id_rutas').map(Number);
+            // Conserva el orden y las repeticiones de rutas registradas al editar.
+            const previas = existing?.id_rutas || [];
+            if (!existing || Array.isArray(existing.id_rutas)) {
+              payload.id_rutas = previas.filter(id => seleccion.includes(id))
+                .concat(seleccion.filter(id => !previas.includes(id)));
+            }
             validarRegistro(payload, existing, unidades, conductores, turnos, abasts);
-            if (payload.km_final <= payload.km_inicial) throw new Error('El km final debe superar el inicial.');
-            if (payload.hora_llegada <= payload.hora_salida) throw new Error('La llegada debe ser posterior a la salida.');
+            if (payload.km_final <= payload.km_inicial) throw falloCampo('km_final', 'El km final debe superar el inicial.');
+            if (payload.hora_llegada <= payload.hora_salida) throw falloCampo('hora_llegada', 'La llegada debe ser posterior a la salida.');
             if (!await confirmarPeriodo(payload.fecha, existing?.fecha)) return;
             await api.saveTurno(payload, existing?.id_turno || null);
             showToast(existing ? 'Turno actualizado.' : 'Turno registrado en bitácora.', 'success');
             close();
             container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
           } catch (err) {
-            const errEl = document.getElementById('turno-err');
-            errEl.textContent = err.message;
-            errEl.classList.remove('hidden');
+            mostrarErrorFormulario(form, err, campoRegistro(err, true));
           }
         });
       },

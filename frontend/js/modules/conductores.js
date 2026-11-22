@@ -1,5 +1,6 @@
-import { api } from '../api.js';
-import { esBus, openModal, showToast, escapeHtml } from '../utils.js';
+import { falloCampo } from '../validaciones.js?v=3';
+import { api } from '../api.js?v=3';
+import { mostrarErrorFormulario, limitarTabla, esBus, openModal, showToast, escapeHtml } from '../utils.js?v=3';
 
 export async function renderConductores(container, searchQuery = '') {
   const [conductores, unidades] = await Promise.all([api.getConductores(), api.getUnidades(true)]);
@@ -8,7 +9,7 @@ export async function renderConductores(container, searchQuery = '') {
     const q = searchQuery.trim().toLowerCase();
     const filtered = conductores.filter((c) =>
       !q || c.nombres.toLowerCase().includes(q) || c.apellidos.toLowerCase().includes(q) || c.dni.includes(q)
-    );
+    ).sort((a, b) => b.id_conductor - a.id_conductor);
 
     if (!container.isConnected) return;
 
@@ -41,10 +42,10 @@ export async function renderConductores(container, searchQuery = '') {
             </tbody>
           </table>
         </div>
-        <div class="table-footer"><span>Mostrando ${filtered.length} de ${conductores.length} conductores</span></div>
       </section>
     `;
 
+    limitarTabla(container.querySelector('table'), filtered.length);
     container.querySelectorAll('[data-baja]').forEach(btn => {
       btn.onclick = async () => {
         if (!window.confirm('¿Dar de baja este registro y conservar su historial?')) return;
@@ -73,7 +74,7 @@ export async function renderConductores(container, searchQuery = '') {
         <form id="cond-form" class="form-grid-2">
           <div class="field-group">
             <label class="field-label">DNI (8 dígitos)</label>
-            <input name="dni" class="input" maxlength="8" value="${escapeHtml(existing?.dni || '')}" required />
+            <input name="dni" pattern="[0-9]{8}" inputmode="numeric" title="Ingresa los ocho dígitos del DNI" class="input" maxlength="8" value="${escapeHtml(existing?.dni || '')}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Brevete</label>
@@ -106,8 +107,7 @@ export async function renderConductores(container, searchQuery = '') {
           const fd = new FormData(e.target);
           try {
             const dni = fd.get('dni').trim();
-            if (!/^\d{8}$/.test(dni)) throw new Error('El DNI debe tener ocho dígitos.');
-            if (conductores.some(c => c.id_conductor !== existing?.id_conductor && c.dni === dni)) throw new Error('El DNI ya está registrado.');
+            if (conductores.some(c => c.id_conductor !== existing?.id_conductor && c.dni === dni)) throw falloCampo('dni', 'El DNI ya está registrado.');
             await api.saveConductor({
               dni: fd.get('dni').trim(),
               brevete: fd.get('brevete').trim(),
@@ -119,9 +119,8 @@ export async function renderConductores(container, searchQuery = '') {
             close();
             container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
           } catch (err) {
-            const errEl = document.getElementById('cond-err');
-            errEl.textContent = err.message;
-            errEl.classList.remove('hidden');
+            const campo = ['V-07', 'V-08'].includes(err.codigo) ? 'dni' : err.codigo === 'V-10' ? 'id_unidad' : null;
+            mostrarErrorFormulario(e.target, err, campo);
           }
         });
       },

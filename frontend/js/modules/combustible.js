@@ -1,7 +1,7 @@
-import { validarRegistro, confirmarPeriodo } from '../validaciones.js';
+import { falloCampo, campoRegistro, errorKilometraje, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=3';
 import { CONFIG } from '../config.js';
-import { api } from '../api.js';
-import { formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { api } from '../api.js?v=3';
+import { mostrarErrorFormulario, errorCampo, mesActual, opcionesPeriodo, limitarTabla, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=3';
 
 export async function renderCombustible(container, searchQuery = '') {
   const [abasts, unidades, conductores, areasData] = await Promise.all([
@@ -16,8 +16,7 @@ export async function renderCombustible(container, searchQuery = '') {
   let filterArea = 'all';
 
   const turnos = await api.getTurnos();
-  let periodo = '';
-  const meses = [...new Set(abasts.map(r => r.fecha.slice(0, 7)))].sort().reverse();
+  let periodo = mesActual();
   const paint = () => {
     const q = searchQuery.trim().toLowerCase();
     const filtered = abasts.filter((a) => {
@@ -33,10 +32,9 @@ export async function renderCombustible(container, searchQuery = '') {
       <section class="card">
         <div class="filters-bar">
           <div class="field-group">
-            <label class="field-label">Periodo</label>
+            <label class="field-label" for="filtro-periodo">Periodo</label>
             <select id="filtro-periodo" class="select">
-              <option value="">Todos los periodos</option>
-              ${meses.map(m => `<option ${m === periodo ? 'selected' : ''}>${m}</option>`).join('')}
+              ${opcionesPeriodo(abasts, periodo)}
             </select>
           </div>
           <div class="field-group">
@@ -89,12 +87,10 @@ export async function renderCombustible(container, searchQuery = '') {
             </tbody>
           </table>
         </div>
-        <div class="table-footer">
-          <span>Mostrando ${filtered.length} de ${abasts.length} vales</span>
-        </div>
       </section>
     `;
 
+    limitarTabla(container.querySelector('table'), filtered.length);
     document.getElementById('filtro-periodo').onchange = e => { periodo = e.target.value; paint(); };
     document.getElementById('comb-unidad').addEventListener('change', (e) => { filterUnidad = e.target.value; paint(); });
     document.getElementById('comb-area').addEventListener('change', (e) => { filterArea = e.target.value; paint(); });
@@ -118,7 +114,7 @@ export async function renderCombustible(container, searchQuery = '') {
         <form id="vale-form" class="form-grid-2">
           <div class="field-group">
             <label class="field-label">N.° de vale</label>
-            <input name="nro_vale" class="input" placeholder="001-0001" value="${escapeHtml(existing?.nro_vale || '')}" required />
+            <input name="nro_vale" maxlength="20" class="input" placeholder="001-0001" value="${escapeHtml(existing?.nro_vale || '')}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Fecha</label>
@@ -157,12 +153,18 @@ export async function renderCombustible(container, searchQuery = '') {
           </div>
           <div class="field-group">
             <label class="field-label">Galones</label>
-            <input name="galones" type="number" step="0.01" class="input" value="${existing?.galones ?? ''}" placeholder="Ej. 45.00" required />
+            <input name="galones" type="number" step="0.01" min="0.01" max="999999.99" class="input" value="${existing?.galones ?? ''}" placeholder="Ej. 45.00" required />
           </div>
           <div class="field-group" style="grid-column:1/-1;">
-            <label class="field-label">Observaciones</label>
-            <textarea name="observaciones" class="textarea">${escapeHtml(existing?.observaciones || '')}</textarea>
+            <label class="field-label">Observaciones (incluye el motivo)</label>
+            <textarea name="observaciones" maxlength="300" class="textarea">${escapeHtml(existing?.observaciones || '')}</textarea>
           </div>
+          <section class="registro-panel" aria-labelledby="calculo-titulo">
+            <h3 id="calculo-titulo">Cálculo con el vale anterior</h3>
+            <p>Km consumidos · <output name="consumidos">—</output></p>
+            <p>Rendimiento · <output name="rendimiento">—</output></p>
+            <p class="card-meta" id="referencia-vale"></p>
+          </section>
           <p id="vale-err" class="field-error hidden" style="grid-column:1/-1;"></p>
           <div class="modal-actions" style="grid-column:1/-1;">
             <button type="submit" class="btn btn-primary">${existing ? 'Guardar cambios' : 'Registrar vale'}</button>
@@ -170,17 +172,39 @@ export async function renderCombustible(container, searchQuery = '') {
         </form>
       `,
       onMount(close) {
-        document.getElementById('vale-form').addEventListener('submit', async (e) => {
+        const form = document.getElementById('vale-form');
+        const { fecha, id_unidad, km_actual, galones, consumidos, rendimiento } = form.elements;
+        const guardar = form.querySelector('[type=submit]');
+        const referencia = form.querySelector('#referencia-vale');
+        const calcular = () => {
+          const km = km_actual.valueAsNumber;
+          const unidad = Number(id_unidad.value);
+          const error = fecha.value && errorKilometraje({ id_unidad: unidad, fecha: fecha.value, km_actual: km }, existing, turnos, abasts);
+          const invalido = !km_actual.validity.valid || Boolean(error);
+          guardar.disabled = invalido;
+          errorCampo(km_actual, error?.message || (km_actual.validity.badInput || km_actual.validity.stepMismatch ? 'Ingresa un kilometraje entero.' : ''));
+          // GET /combustible ordena por fecha, km e id descendentes, incluso dentro del mismo día.
+          const anterior = abasts.find(v => {
+            if (v.id_unidad !== unidad || v.id_abastecimiento === existing?.id_abastecimiento) return false;
+            if (v.fecha !== fecha.value) return v.fecha < fecha.value;
+            if (v.km_actual !== km) return v.km_actual < km;
+            return v.id_abastecimiento < (existing?.id_abastecimiento ?? Infinity);
+          });
+          const distancia = !invalido && anterior ? km - anterior.km_actual : null;
+          consumidos.value = distancia == null ? '—' : formatSpaceInt(distancia) + ' km';
+          rendimiento.value = distancia != null && galones.valueAsNumber > 0 && galones.validity.valid
+            ? formatNumber(distancia / galones.valueAsNumber, 2) + ' km/gal' : '—';
+          if (invalido && (km_actual.value || km_actual.validity.badInput)) referencia.textContent = 'Corrige el kilometraje para calcular y guardar.';
+          else if (!fecha.value || !km_actual.value) referencia.textContent = 'Ingresa la fecha y el kilometraje del vale.';
+          else referencia.textContent = anterior ? 'Vale anterior ' + anterior.nro_vale + ' · ' + formatSpaceInt(anterior.km_actual) + ' km'
+            : 'Primer vale de la unidad. Sin lectura anterior para calcular.';
+        };
+        for (const campo of [fecha, id_unidad, km_actual, galones]) campo.addEventListener('input', calcular);
+        calcular();
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
-          const fd = new FormData(e.target);
-          const errEl = document.getElementById('vale-err');
-          const galones = Number(fd.get('galones'));
-          if (!galones || galones <= 0) {
-            errEl.textContent = 'Error: los galones deben ser mayores a 0.';
-            errEl.classList.remove('hidden');
-            e.target.querySelector('[name="galones"]').classList.add('is-error');
-            return;
-          }
+          if (guardar.disabled) return;
+          const fd = new FormData(form);
           const payload = {
             nro_vale: fd.get('nro_vale').trim(),
             fecha: fd.get('fecha'),
@@ -189,20 +213,19 @@ export async function renderCombustible(container, searchQuery = '') {
             id_area: fd.get('id_area') ? Number(fd.get('id_area')) : null,
             tipo_combustible: fd.get('tipo_combustible'),
             km_actual: Number(fd.get('km_actual')),
-            galones,
+            galones: galones.valueAsNumber,
             observaciones: fd.get('observaciones'),
           };
           try {
             validarRegistro(payload, existing, unidades, conductores, turnos, abasts);
-            if (abasts.some(a => a.id_abastecimiento !== existing?.id_abastecimiento && a.nro_vale.toUpperCase() === payload.nro_vale.toUpperCase())) throw new Error('Este vale ya está registrado.');
+            if (abasts.some(a => a.id_abastecimiento !== existing?.id_abastecimiento && a.nro_vale.toUpperCase() === payload.nro_vale.toUpperCase())) throw falloCampo('nro_vale', 'Este vale ya está registrado.');
             if (!await confirmarPeriodo(payload.fecha, existing?.fecha)) return;
             await api.saveAbastecimiento(payload, existing?.id_abastecimiento || null);
             showToast(existing ? 'Vale actualizado.' : 'Vale registrado.', 'success');
             close();
             container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
           } catch (err) {
-            errEl.textContent = err.message;
-            errEl.classList.remove('hidden');
+            mostrarErrorFormulario(form, err, campoRegistro(err));
           }
         });
       },

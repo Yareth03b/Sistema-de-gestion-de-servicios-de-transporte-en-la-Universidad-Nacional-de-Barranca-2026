@@ -1,3 +1,5 @@
+import { CONFIG } from './config.js';
+
 export function formatNumber(n, decimals = 0) {
   if (n == null || !Number.isFinite(Number(n))) return '—';
   const num = Number(n || 0);
@@ -22,6 +24,49 @@ export function formatDateES(isoDate) {
   return `${d}/${m}/${y}`;
 }
 
+export function formatHora(hora) {
+  return hora?.slice(0, 5) || '';
+}
+
+export function mesActual() {
+  return CONFIG.REFERENCE_DATE.slice(0, 7);
+}
+
+export function opcionesPeriodo(registros, periodo) {
+  const meses = new Set([mesActual(), ...registros.map(r => r.fecha.slice(0, 7))]);
+  const opciones = [...meses].sort().reverse().map(m => {
+    const [anio, mes] = m.split('-');
+    const nombre = new Date(Number(anio), Number(mes) - 1, 1).toLocaleString('es-PE', { month: 'long' });
+    return `<option value="${m}" ${m === periodo ? 'selected' : ''}>${nombre[0].toUpperCase() + nombre.slice(1)} ${anio}</option>`;
+  });
+  return '<option value="">Todos los periodos</option>' + opciones.join('');
+}
+
+// La tabla recibe los registros ya ordenados y filtrados. El historial sigue accesible.
+export function limitarTabla(tabla, total) {
+  const filas = Array.from(tabla.tBodies[0].rows);
+  const pie = document.createElement('div');
+  pie.className = 'table-footer';
+  const texto = document.createElement('span');
+  const boton = document.createElement('button');
+  boton.type = 'button';
+  boton.className = 'btn-link';
+  const mostrar = (todos) => {
+    filas.forEach((fila, i) => { fila.hidden = !todos && i >= 5; });
+    texto.textContent = total >= 5 && !todos ? `Mostrando los 5 más recientes de ${total}`
+      : `Mostrando ${total} de ${total}`;
+    boton.textContent = todos ? 'Ver los 5 más recientes' : 'Ver todos';
+    boton.setAttribute('aria-expanded', String(todos));
+  };
+  pie.append(texto);
+  if (total > 5) pie.append(boton);
+  const contenedor = tabla.closest('.table-wrap');
+  if (contenedor.nextElementSibling?.classList.contains('table-footer')) contenedor.nextElementSibling.remove();
+  contenedor.after(pie);
+  boton.onclick = () => mostrar(boton.getAttribute('aria-expanded') !== 'true');
+  mostrar(false);
+}
+
 export function escapeHtml(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')
@@ -42,6 +87,70 @@ export function showToast(message, type = 'default') {
   }, 3200);
 }
 
+export function errorCampo(campo, mensaje) {
+  if (!(campo instanceof HTMLElement)) return;
+  const grupo = campo.closest('.field-group') || campo.parentElement;
+  const id = (campo.id || campo.form.id + '-' + campo.name) + '-error';
+  let aviso = document.getElementById(id);
+  if (!mensaje) {
+    aviso?.remove();
+    campo.removeAttribute('aria-invalid');
+    campo.removeAttribute('aria-describedby');
+    return;
+  }
+  if (!aviso) {
+    aviso = document.createElement('span');
+    aviso.id = id;
+    aviso.className = 'field-error';
+    grupo.append(aviso);
+  }
+  aviso.textContent = mensaje;
+  campo.setAttribute('aria-invalid', 'true');
+  campo.setAttribute('aria-describedby', id);
+}
+
+export function prepararCampos(form) {
+  for (const campo of form.querySelectorAll('input.input, select.select, textarea.textarea')) {
+    const etiqueta = campo.closest('.field-group')?.querySelector('label');
+    if (!etiqueta) continue;
+    campo.id ||= form.id + '-' + campo.name;
+    etiqueta.htmlFor = campo.id;
+    campo.addEventListener('invalid', () => {
+      const validez = campo.validity;
+      let mensaje = campo.validationMessage;
+      if (validez.valueMissing) mensaje = 'Completa el campo «' + etiqueta.textContent + '».';
+      else if (validez.rangeUnderflow) mensaje = 'El valor mínimo es ' + campo.min + '.';
+      else if (validez.rangeOverflow) mensaje = 'El valor máximo es ' + (campo.type === 'date' ? formatDateES(campo.max) : campo.max) + '.';
+      else if (validez.stepMismatch) mensaje = 'Ingresa un valor en incrementos de ' + (campo.step || '1') + '.';
+      else if (validez.patternMismatch && campo.title) mensaje = campo.title;
+      else if (validez.badInput) mensaje = 'Revisa el valor de «' + etiqueta.textContent + '».';
+      errorCampo(campo, mensaje);
+    });
+    campo.addEventListener('input', () => {
+      errorCampo(campo, '');
+      form.querySelector('p.field-error')?.classList.add('hidden');
+    });
+  }
+}
+
+export function mostrarErrorFormulario(form, err, campo) {
+  const campos = Object.entries(err.errors || {});
+  for (const [nombre, mensajes] of campos) {
+    errorCampo(form.elements.namedItem(nombre.split('.').pop()), mensajes.join(' '));
+  }
+  const declarado = err.message.match(/campo '([^']+)'/)?.[1];
+  const control = form.elements.namedItem(err.campo || campo || declarado);
+  if (control) errorCampo(control, err.message);
+  const resumen = form.querySelector('p.field-error');
+  if (resumen) {
+    resumen.textContent = err.message;
+    resumen.classList.remove('hidden');
+  } else {
+    showToast(err.message, 'error');
+  }
+  form.querySelector('[aria-invalid="true"]')?.focus();
+}
+
 export function openModal({ title, bodyHtml, onMount }) {
   const root = document.getElementById('modal-root');
   root.innerHTML = `
@@ -60,6 +169,9 @@ export function openModal({ title, bodyHtml, onMount }) {
   document.getElementById('modal-backdrop').addEventListener('click', (e) => {
     if (e.target.id === 'modal-backdrop') close();
   });
+  root.querySelector('[data-cancelar]')?.addEventListener('click', close);
+  const form = root.querySelector('form');
+  if (form) prepararCampos(form);
   if (onMount) onMount(close);
   return close;
 }
