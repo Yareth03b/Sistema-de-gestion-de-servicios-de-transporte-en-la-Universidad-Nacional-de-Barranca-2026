@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=4';
-import { showToast } from './utils.js?v=4';
+import { CONFIG } from './config.js?v=5';
+import { showToast } from './utils.js?v=5';
 
 let apiOnline = false;
 
@@ -141,6 +141,15 @@ export const api = {
   },
 
   // --- Mantenimiento ---
+  async getProximosMantenimientos() {
+    try {
+      return (await request('/mantenimiento/proximos')).buses;
+    } catch (err) {
+      if (err.status === 404) return null;
+      throw err;
+    }
+  },
+
   async getMantenimientos() {
     return request('/mantenimiento');
   },
