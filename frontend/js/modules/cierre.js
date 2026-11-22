@@ -1,6 +1,6 @@
 import { api } from '../api.js?v=6';
 import { CONFIG } from '../config.js?v=6';
-import { formatDateES, formatSpaceInt, formatNumber, tablaDatos, exportarCsv, openModal, showToast } from '../utils.js?v=6';
+import { formatDateES, formatSpaceInt, formatNumber, tablaDatos, exportarCsv, openModal, showToast } from '../utils.js?v=8';
 
 export const trimestres = ['I', 'II', 'III', 'IV'];
 

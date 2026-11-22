@@ -1,5 +1,5 @@
 import { api } from '../api.js?v=6';
-import { mesActual, tablaDatos, limitarTabla, exportarCsv, formatNumber, formatSpaceInt, escapeHtml } from '../utils.js?v=6';
+import { mesActual, tablaDatos, limitarTabla, exportarCsv, formatNumber, formatSpaceInt, escapeHtml } from '../utils.js?v=8';
 import { renderCierre } from './cierre.js?v=6';
 
 export async function renderReportes(container) {

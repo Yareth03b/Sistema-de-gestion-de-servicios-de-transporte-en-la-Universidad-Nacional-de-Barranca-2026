@@ -1,6 +1,6 @@
 import { falloCampo } from '../validaciones.js?v=6';
 import { api } from '../api.js?v=6';
-import { mostrarErrorFormulario, limitarTabla, esBus, openModal, showToast, escapeHtml } from '../utils.js?v=6';
+import { mostrarErrorFormulario, limitarTabla, esBus, openModal, showToast, escapeHtml } from '../utils.js?v=8';
 
 export async function renderConductores(container, searchQuery = '') {
   const [conductores, unidades] = await Promise.all([api.getConductores(), api.getUnidades(true)]);
