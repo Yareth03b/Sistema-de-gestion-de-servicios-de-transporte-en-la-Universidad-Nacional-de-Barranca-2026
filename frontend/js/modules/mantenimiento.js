@@ -1,6 +1,6 @@
 import { CONFIG } from '../config.js';
-import { api } from '../api.js';
-import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { api } from '../api.js?v=3';
+import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=3';
 
 export async function renderMantenimiento(container, searchQuery = '') {
   let aviso = '';

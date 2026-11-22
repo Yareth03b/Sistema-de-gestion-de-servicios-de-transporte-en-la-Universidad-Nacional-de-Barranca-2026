@@ -1,5 +1,5 @@
-import { esBus, formatHora, formatSpaceInt } from './utils.js';
-import { api } from './api.js';
+import { esBus, formatHora, formatSpaceInt } from './utils.js?v=3';
+import { api } from './api.js?v=3';
 
 export function falloCampo(campo, message) {
   return Object.assign(new Error(message), { campo });

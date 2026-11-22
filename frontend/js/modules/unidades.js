@@ -1,7 +1,7 @@
 import { CONFIG } from '../config.js';
-import { getSession } from './auth.js';
-import { api } from '../api.js';
-import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { getSession } from './auth.js?v=3';
+import { api } from '../api.js?v=3';
+import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=3';
 
 export async function renderUnidades(container, searchQuery = '') {
   const unidades = await api.getUnidades(true);

@@ -1,7 +1,7 @@
-import { falloCampo, campoRegistro, validarRegistro, confirmarPeriodo } from '../validaciones.js';
+import { falloCampo, campoRegistro, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=3';
 import { CONFIG } from '../config.js';
-import { api } from '../api.js';
-import { mostrarErrorFormulario, errorCampo, formatHora, mesActual, opcionesPeriodo, limitarTabla, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js';
+import { api } from '../api.js?v=3';
+import { mostrarErrorFormulario, errorCampo, formatHora, mesActual, opcionesPeriodo, limitarTabla, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=3';
 
 export async function renderTurnos(container, searchQuery = '') {
   const [turnos, unidades, conductores, rutas] = await Promise.all([
