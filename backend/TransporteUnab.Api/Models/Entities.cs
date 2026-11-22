@@ -160,6 +160,8 @@ public class Mantenimiento
     [Required, MaxLength(20)] public string tipo { get; set; } = string.Empty;
     [MaxLength(300)] public string? detalle { get; set; }
     [MaxLength(260)] public string? foto { get; set; }
+    /// <summary>Fecha de salida del taller. NULL = el bus sigue en taller. fecha = ingreso.</summary>
+    public DateTime? fecha_salida { get; set; }
 }
 
 [Table("DocumentoUnidad")]

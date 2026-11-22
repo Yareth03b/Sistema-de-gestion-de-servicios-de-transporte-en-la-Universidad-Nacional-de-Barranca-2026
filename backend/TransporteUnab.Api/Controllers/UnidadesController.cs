@@ -44,20 +44,32 @@ public class UnidadesController : ControllerBase
             })
             .ToListAsync();
 
-        return Ok(list.Select(u => new
+        var taller = await Taller.EnTallerPorUnidad(_db, HoraPeru.Hoy);
+
+        return Ok(list.Select(u =>
         {
-            u.id_unidad,
-            u.placa,
-            u.tipo,
-            u.marca,
-            u.modelo,
-            u.codigo_patrimonial,
-            u.capacidad,
-            u.estado,
-            u.activo,
-            numero_bus = Reglas.NumeroBus(u.placa),
-            // Último km conocido: el mayor entre bitácora y vales (las unidades que no son bus no tienen bitácora).
-            km_actual = Math.Max(u.km_turnos ?? 0, u.km_vales ?? 0)
+            var t = taller.GetValueOrDefault(u.id_unidad);
+            return new
+            {
+                u.id_unidad,
+                u.placa,
+                u.tipo,
+                u.marca,
+                u.modelo,
+                u.codigo_patrimonial,
+                u.capacidad,
+                // Estado DERIVADO: «En mantenimiento» si hoy está en taller; si no, el guardado.
+                estado = Taller.EstadoDerivado(u.activo, u.estado, t is not null),
+                estado_guardado = u.estado,
+                en_taller = u.activo && t is not null,
+                id_mantenimiento_taller = t?.id_mantenimiento,
+                taller_desde = t?.fecha.ToString("yyyy-MM-dd"),
+                dias_en_taller = t is null ? (int?)null : Taller.DiasEnTaller(t.fecha, t.fecha_salida),
+                u.activo,
+                numero_bus = Reglas.NumeroBus(u.placa),
+                // Último km conocido: el mayor entre bitácora y vales (las unidades que no son bus no tienen bitácora).
+                km_actual = Math.Max(u.km_turnos ?? 0, u.km_vales ?? 0)
+            };
         }));
     }
 
@@ -119,10 +131,16 @@ public class UnidadesController : ControllerBase
         var nombres = await _db.Conductores.AsNoTracking().Where(c => idsConductor.Contains(c.id_conductor))
             .ToDictionaryAsync(c => c.id_conductor, c => c.nombres + " " + c.apellidos);
 
+        var taller = (await Taller.EnTallerPorUnidad(_db, HoraPeru.Hoy, new[] { id })).GetValueOrDefault(id);
+        var mantenimientos = await _db.Mantenimientos.AsNoTracking().Where(m => m.id_unidad == id)
+            .OrderByDescending(m => m.fecha).ThenByDescending(m => m.km).ToListAsync();
+
         return Ok(new
         {
             unidad,
             numero_bus = Reglas.NumeroBus(unidad.placa),
+            estado_actual = Taller.EstadoDerivado(unidad.activo, unidad.estado, taller is not null),
+            en_taller = unidad.activo && taller is not null,
             turnos,
             abastecimientos = vales
                 .OrderByDescending(a => a.fecha).ThenByDescending(a => a.km_actual)
@@ -141,8 +159,18 @@ public class UnidadesController : ControllerBase
                     calculo[a.id_abastecimiento].km_consumidos,
                     calculo[a.id_abastecimiento].rendimiento
                 }),
-            mantenimientos = await _db.Mantenimientos.AsNoTracking().Where(m => m.id_unidad == id)
-                .OrderByDescending(m => m.fecha).ThenByDescending(m => m.km).ToListAsync(),
+            mantenimientos = mantenimientos.Select(m => new
+            {
+                m.id_mantenimiento,
+                m.id_unidad,
+                m.fecha,
+                m.km,
+                m.tipo,
+                m.detalle,
+                m.foto,
+                m.fecha_salida,
+                dias_en_taller = Taller.DiasEnTaller(m.fecha, m.fecha_salida)
+            }),
             documentos = await _db.DocumentosUnidad.AsNoTracking().Where(d => d.id_unidad == id)
                 .OrderBy(d => d.fecha_vencimiento).ToListAsync(),
             incidentes = incidentes.Select(i =>
@@ -223,6 +251,11 @@ public class UnidadesController : ControllerBase
 
         if (dto.capacidad is < 0) throw new ReglaException("La capacidad no puede ser negativa.");
         var estado = Reglas.Opcional(dto.estado, "estado", 20);
+        // «En mantenimiento» se deriva del taller: si la web reenvía el estado mostrado mientras el bus
+        // está en taller, se conserva el estado guardado para que no quede fijo al registrar la salida.
+        if (id is int idUnidad && string.Equals(estado, Taller.EstadoEnMantenimiento, StringComparison.OrdinalIgnoreCase)
+            && await _db.Mantenimientos.Where(m => m.id_unidad == idUnidad).EnTallerEl(HoraPeru.Hoy).AnyAsync())
+            estado = u.estado;
         Reglas.V14EstadoBaja(u.activo, estado);
 
         if (dto.id_usuario is int idUsuario && !await _db.Usuarios.AnyAsync(x => x.id_usuario == idUsuario))
