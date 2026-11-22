@@ -232,3 +232,103 @@ La respuesta trae los mismos campos que antes más `aviso` (texto, o `null` si n
 Hay dos mantenimientos de ABC-001 del 18/11/2026, idénticos y sin salida (ids 1 y 2; probablemente un doble envío).
 No se cambió ningún dato. Con esta versión, ABC-001 figura en taller hasta que se registre la salida de **ambos**.
 La regla de «uno abierto por bus» solo se aplica a los ingresos nuevos.
+
+## 8. Reportes por unidad, detalle de conciliación y edición de documentos (rama `feat/reportes-conciliacion`)
+
+### 8.1 `GET /api/reportes/por-unidad` (nuevo, panel 09)
+
+Parámetros (todos opcionales):
+
+| Parámetro | Valor | Por defecto |
+|---|---|---|
+| `mes` | `yyyy-MM` (p. ej. `2026-11`) | mes actual, si no se envía `desde` y `hasta` |
+| `desde`, `hasta` | `yyyy-MM-dd`; los dos inclusive y obligatorios juntos | — |
+| `id_unidad` | id de la unidad | todas |
+| `dias` | `calendario` o `habiles` | `calendario` |
+
+```json
+{
+  "periodo": { "desde": "2026-11-01", "hasta": "2026-11-30", "dias": "calendario", "dias_contados": 21, "dias_hasta": "2026-11-21" },
+  "totales": { "km_periodo": 650, "galones": 75.00, "vales": 3, "rendimiento_flota": 13.33, "promedio_diario": 30.95 },
+  "unidades": [
+    { "id_unidad": 1, "placa": "EGT-801", "numero_bus": "801", "tipo": "Bus", "activo": true,
+      "km_periodo": 600, "km_fuente": "vales", "galones": 45.00, "vales": 2,
+      "rendimiento": 13.33, "km_acumulado": 10600, "promedio_diario": 28.57 }
+  ]
+}
+```
+
+Cómo se calcula cada campo (igual que el cierre trimestral, para que el reporte y el cierre den las mismas cifras):
+
+- `km_periodo`: `km_actual` del último vale del periodo − `km_actual` del último vale **anterior** al inicio
+  (`km_fuente: "vales"`). Si la unidad no tiene vale anterior, se usan los km de la bitácora del periodo
+  (`km_fuente: "bitacora"`). Si tampoco hay bitácora, `0` (`km_fuente: null`).
+- `galones`: la suma de los vales del periodo.
+- `rendimiento`: `km_periodo ÷ galones` del periodo, solo cuando `km_fuente` es `"vales"`. **Nunca es un promedio
+  de rendimientos.** Es `null` si no hay vale anterior o si los galones son 0 (no se divide entre cero).
+- `rendimiento_flota`: Σ km ÷ Σ galones de las unidades que tienen `rendimiento` (las demás se omiten). Es el mismo
+  criterio que `rendimientoFlota()` del dashboard.
+- `km_acumulado`: el mayor km registrado (vales o bitácora) hasta el fin del periodo.
+- `promedio_diario`: `km_periodo ÷ dias_contados`, redondeado a 2 decimales. Es `null` si `dias_contados` es 0.
+
+**Cómo se cuentan los días.** Se cuenta desde `desde` hasta `hasta` o hasta hoy, lo que ocurra primero
+(`dias_hasta`): en el mes en curso no se cuentan los días que aún no pasaron.
+
+- `calendario` *(por defecto)*: todos los días. Se eligió porque los buses también salen fines de semana, no hay
+  tabla de feriados y así se mantiene la misma base que la estimación de «días al próximo mantenimiento».
+- `habiles`: de lunes a viernes. **No descuenta feriados**, porque la BD no los registra.
+
+Errores: 400 si `mes` no tiene el formato correcto, si se envía `mes` junto con `desde`/`hasta`, si falta
+`desde` o `hasta`, si `hasta` es anterior a `desde`, si el periodo supera los 2 años o si `dias` no es válido.
+400 `V-06` si el periodo empieza en el futuro. 404 si `id_unidad` no existe.
+
+Incluye las unidades activas y las dadas de baja que tuvieron vales o turnos en el periodo.
+**Web (`reportes.js`):** usar este endpoint en lugar de sumar todo el histórico en el navegador.
+
+### 8.2 `GET /api/conciliacion/detalle?anio=2026&trimestre=4` (nuevo, panel 12)
+
+La conciliación sigue siendo **trimestral** (decisión D1). Devuelve el detalle por unidad según los vales, haya o no
+reporte del grifo guardado:
+
+```json
+{
+  "anio": 2026, "trimestre": 4, "desde": "2026-10-01", "hasta": "2026-12-31",
+  "reporte": { "id_reporte": 1, "galones_total": 100.00, "observaciones": null },
+  "galones_sistema": 85.00,
+  "cantidad_vales": 4,
+  "diferencia": 15.00,
+  "unidades": [
+    { "id_unidad": 1, "placa": "EGT-801", "numero_bus": "801", "cantidad_vales": 3,
+      "nros_vale": ["001-001", "001-002", "001-003"], "galones": 55.00,
+      "vales": [ { "nro_vale": "001-001", "fecha": "2026-10-27", "galones": 10.00 } ] }
+  ]
+}
+```
+
+- `reporte` y `diferencia` son `null` si aún no se guardó el total del grifo de ese trimestre.
+- `diferencia` = `galones_total` del grifo − `galones_sistema`, con el mismo signo que `GET /api/conciliacion`.
+- Errores: 400 si `trimestre` no está entre 1 y 4 o si el año no es válido.
+- Para guardar el total del grifo se sigue usando `POST /api/conciliacion` (sin cambios).
+
+### 8.3 `PUT /api/unidades/documentos/{id}` (nuevo, panel 15)
+
+Edita un documento de la unidad (SOAT, revisión técnica…). El cuerpo es el mismo que el del POST:
+
+```json
+{ "id_unidad": 2, "tipo": "SOAT", "numero": "POL-2026-0457", "fecha_vencimiento": "2027-03-15" }
+```
+
+- El documento **no cambia de unidad**: se ignora `id_unidad`.
+- Validaciones (las mismas que el POST): la unidad debe ser bus · `tipo` es obligatorio (máx. 20 caracteres) ·
+  `numero` es obligatorio (máx. 30 caracteres) · `fecha_vencimiento` debe estar entre los años 2000 y 2100.
+- Errores: 400 con el campo que falla · 404 si el documento no existe.
+- Respuesta: el documento actualizado `{ id_documento, id_unidad, tipo, numero, fecha_vencimiento }`.
+
+En `GET /api/unidades/{id}/historial`, cada documento trae además `dias_para_vencer` (negativo si ya venció)
+y `vencido` (bool), para mostrar «Vence en 12 días».
+
+### 8.4 Decisiones aplicadas
+
+- **D2, «Motivo» del vale:** se escribe dentro de `observaciones` (máx. 300 caracteres). No hay campo nuevo.
+- **D3, foto del mantenimiento:** es un enlace de texto en el campo `foto`, que ya existía (máx. 260 caracteres).
+- No se cambió el esquema de la BD. Los campos existentes conservan su nombre y su formato, salvo lo indicado en 7.1.
