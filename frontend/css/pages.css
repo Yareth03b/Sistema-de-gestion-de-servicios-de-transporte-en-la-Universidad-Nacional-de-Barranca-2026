@@ -80,31 +80,18 @@
 
 .login-brand-side {
   border-left: 1px solid var(--border-divider);
-  padding: 32px;
+  padding: 16px;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
 }
 
-.login-brand-logo {
-  width: 92px;
-  height: auto;
-  margin-bottom: var(--space-6);
-}
-
-.login-brand-title {
-  font-family: var(--font-serif);
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.25;
-  margin-bottom: var(--space-2);
-}
-
-.login-brand-sub {
-  font-size: 12.5px;
-  color: var(--text-secondary);
+.login-brand-photo {
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 12px;
+  display: block;
 }
 
 @media (max-width: 780px) {
@@ -114,6 +101,9 @@
   .login-brand-side {
     border-left: none;
     border-top: 1px solid var(--border-divider);
+  }
+  .login-brand-photo {
+    max-height: 260px;
   }
   .login-form-side {
     padding: 32px 24px;
