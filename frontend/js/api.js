@@ -1,5 +1,5 @@
 import { CONFIG } from './config.js?v=6';
-import { showToast } from './utils.js?v=6';
+import { showToast } from './utils.js?v=8';
 
 let apiOnline = false;
 

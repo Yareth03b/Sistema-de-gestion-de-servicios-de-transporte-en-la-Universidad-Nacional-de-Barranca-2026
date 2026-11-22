@@ -168,8 +168,50 @@ export function mostrarErrorFormulario(form, err, campo) {
   form.querySelector('[aria-invalid="true"]')?.focus();
 }
 
+let modalActivo = false;
+let cerrandoPorCodigo = false;
+let focoAnterior = null;
+
+function cerrarModalDom(retirarHistorial = true) {
+  if (!modalActivo) return;
+  modalActivo = false;
+  const root = document.getElementById('modal-root');
+  if (root) root.innerHTML = '';
+  if (focoAnterior && typeof focoAnterior.focus === 'function') {
+    try { focoAnterior.focus(); } catch {}
+    focoAnterior = null;
+  }
+  if (retirarHistorial && window.history.state?.modal) {
+    cerrandoPorCodigo = true;
+    window.history.back();
+    setTimeout(() => { cerrandoPorCodigo = false; }, 500);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  if (window.history.state?.modal) {
+    window.history.replaceState(null, '');
+  }
+
+  window.addEventListener('popstate', () => {
+    if (cerrandoPorCodigo) {
+      cerrandoPorCodigo = false;
+      return;
+    }
+    if (modalActivo) {
+      cerrarModalDom(false);
+    }
+  });
+}
+
 export function openModal({ title, bodyHtml, onMount }) {
   const root = document.getElementById('modal-root');
+  if (!modalActivo && !window.history.state?.modal) {
+    window.history.pushState({ modal: true }, '');
+  }
+  modalActivo = true;
+  focoAnterior = document.activeElement;
+
   root.innerHTML = `
     <div class="modal-backdrop" id="modal-backdrop">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -181,7 +223,7 @@ export function openModal({ title, bodyHtml, onMount }) {
       </div>
     </div>
   `;
-  const close = () => { root.innerHTML = ''; };
+  const close = () => cerrarModalDom(true);
   document.getElementById('modal-close-btn').addEventListener('click', close);
   document.getElementById('modal-backdrop').addEventListener('click', (e) => {
     if (e.target.id === 'modal-backdrop') close();
@@ -189,6 +231,8 @@ export function openModal({ title, bodyHtml, onMount }) {
   root.querySelector('[data-cancelar]')?.addEventListener('click', close);
   const form = root.querySelector('form');
   if (form) prepararCampos(form);
+  const primerControl = root.querySelector('input:not([type="hidden"]), select, textarea, button.btn-primary, button.modal-close');
+  primerControl?.focus();
   if (onMount) onMount(close);
   return close;
 }
