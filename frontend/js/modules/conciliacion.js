@@ -1,5 +1,5 @@
-import { api } from '../api.js';
-import { formatNumber, openModal, showToast, escapeHtml } from '../utils.js';
+import { api } from '../api.js?v=3';
+import { mostrarErrorFormulario, limitarTabla, formatNumber, openModal, showToast, escapeHtml } from '../utils.js?v=3';
 
 export async function renderConciliacion(container) {
   const reportes = await api.getConciliacion();
@@ -51,6 +51,7 @@ export async function renderConciliacion(container) {
     </section>
   `;
 
+  limitarTabla(container.querySelector('table'), reportes.length);
   const openGrifoModal = () => {
     openModal({
       title: 'Registrar reporte del grifo',
@@ -58,7 +59,7 @@ export async function renderConciliacion(container) {
         <form id="grifo-form" class="form-grid-2">
           <div class="field-group">
             <label class="field-label">Año</label>
-            <input name="anio" type="number" class="input" value="${new Date().getFullYear()}" required />
+            <input name="anio" type="number" min="2000" class="input" value="${new Date().getFullYear()}" required />
           </div>
           <div class="field-group">
             <label class="field-label">Trimestre</label>
@@ -71,11 +72,11 @@ export async function renderConciliacion(container) {
           </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Total galones facturados por el grifo</label>
-            <input name="galones_total" type="number" step="0.01" class="input" required placeholder="Ej. 1526.00" />
+            <input name="galones_total" type="number" min="0" max="99999999.99" step="0.01" class="input" required placeholder="Ej. 1526.00" />
           </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Observaciones</label>
-            <textarea name="observaciones" class="textarea" placeholder="N.° de factura o detalle"></textarea>
+            <textarea name="observaciones" maxlength="300" class="textarea" placeholder="N.° de factura o detalle"></textarea>
           </div>
           <div class="modal-actions" style="grid-column:1/-1;">
             <button type="submit" class="btn btn-primary">Guardar reporte</button>
@@ -94,7 +95,8 @@ export async function renderConciliacion(container) {
               observaciones: fd.get('observaciones').trim(),
             });
           } catch (err) {
-            showToast(err.message, 'error');
+            const campo = err.codigo === 'V-06' ? (err.message.includes('año') ? 'anio' : 'trimestre') : null;
+            mostrarErrorFormulario(e.target, err, campo);
             return;
           }
           showToast('Reporte de grifo actualizado.', 'success');

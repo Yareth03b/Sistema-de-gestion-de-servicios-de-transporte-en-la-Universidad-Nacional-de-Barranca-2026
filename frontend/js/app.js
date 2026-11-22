@@ -1,17 +1,17 @@
-import { api } from './api.js';
+import { api } from './api.js?v=3';
 import { CONFIG } from './config.js';
-import { formatDateES, showToast } from './utils.js';
-import { initAuth, clearSession } from './modules/auth.js';
-import { renderDashboard } from './modules/dashboard.js';
-import { renderTurnos } from './modules/turnos.js';
-import { renderCombustible } from './modules/combustible.js';
-import { renderUnidades } from './modules/unidades.js';
-import { renderMantenimiento } from './modules/mantenimiento.js';
-import { renderConductores } from './modules/conductores.js';
-import { renderRutas } from './modules/rutas.js';
-import { renderReportes } from './modules/reportes.js';
-import { renderConciliacion } from './modules/conciliacion.js';
-import { renderEstimacion } from './modules/estimacion.js';
+import { formatDateES, showToast } from './utils.js?v=3';
+import { initAuth, clearSession } from './modules/auth.js?v=3';
+import { renderDashboard } from './modules/dashboard.js?v=3';
+import { renderTurnos } from './modules/turnos.js?v=3';
+import { renderCombustible } from './modules/combustible.js?v=3';
+import { renderUnidades } from './modules/unidades.js?v=3';
+import { renderMantenimiento } from './modules/mantenimiento.js?v=3';
+import { renderConductores } from './modules/conductores.js?v=3';
+import { renderRutas } from './modules/rutas.js?v=3';
+import { renderReportes } from './modules/reportes.js?v=3';
+import { renderConciliacion } from './modules/conciliacion.js?v=3';
+import { renderEstimacion } from './modules/estimacion.js?v=3';
 
 const ROUTES = {
   dashboard: { title: 'Inicio', subtitle: () => `Datos al ${formatDateES(CONFIG.REFERENCE_DATE)}`, cta: null, render: renderDashboard },

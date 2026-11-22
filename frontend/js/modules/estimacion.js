@@ -1,6 +1,6 @@
 import { CONFIG } from '../config.js';
-import { api } from '../api.js';
-import { esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js';
+import { api } from '../api.js?v=3';
+import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js?v=3';
 
 const EST_AREAS_KEY = 'unab_estimacion_areas';
 
@@ -66,7 +66,7 @@ export async function renderEstimacion(container) {
           </div>
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Destino</label>
-            <input name="destino" id="est-destino" class="input" required placeholder="Ej. Lima - Ciudad Universitaria" />
+            <input name="destino" maxlength="100" id="est-destino" class="input" required placeholder="Ej. Lima - Ciudad Universitaria" />
           </div>
           <div class="field-group">
             <label class="field-label">Distancia de ida y vuelta (km)</label>
@@ -125,6 +125,7 @@ export async function renderEstimacion(container) {
     </div>
   `;
 
+  limitarTabla(container.querySelector('table'), historial.length);
   const kmEl = document.getElementById('est-km');
   const rendEl = document.getElementById('est-rend');
   const precioEl = document.getElementById('est-precio');
@@ -155,7 +156,9 @@ export async function renderEstimacion(container) {
     }
   });
 
-  document.getElementById('est-form').addEventListener('submit', async (e) => {
+  const form = document.getElementById('est-form');
+  prepararCampos(form);
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const areaSel = document.getElementById('est-area');
@@ -176,7 +179,7 @@ export async function renderEstimacion(container) {
       });
       guardarAreaLocal(fecha, destino, areaNombre);
     } catch (err) {
-      showToast(err.message, 'error');
+      mostrarErrorFormulario(form, err);
       return;
     }
     showToast('Estimación guardada.', 'success');

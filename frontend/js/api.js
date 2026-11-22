@@ -1,5 +1,5 @@
 import { CONFIG } from './config.js';
-import { showToast } from './utils.js';
+import { showToast } from './utils.js?v=3';
 
 let apiOnline = false;
 
@@ -32,6 +32,7 @@ async function request(path, options = {}) {
       const body = await res.json().catch(() => ({}));
       const detail = Object.values(body.errors || {}).flat().join(' ');
       const err = new Error([body.message, detail].filter(Boolean).join(" ") || body.title || `HTTP ${res.status} (${path})`);
+      err.errors = body.errors;
       err.status = res.status;
       err.codigo = body.codigo ?? null;
       throw err;
