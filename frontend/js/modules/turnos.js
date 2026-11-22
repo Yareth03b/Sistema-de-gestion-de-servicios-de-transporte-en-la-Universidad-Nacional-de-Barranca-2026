@@ -124,8 +124,10 @@ export async function renderTurnos(container, searchQuery = '') {
           <div class="field-group">
             <label class="field-label">Conductor</label>
             <select name="id_conductor" class="select" required>
+              <option value="">Selecciona un conductor</option>
               ${conductores.filter(c => c.activo || c.id_conductor === existing?.id_conductor).map((c) => `<option value="${c.id_conductor}" ${existing?.id_conductor === c.id_conductor ? 'selected' : ''}>${escapeHtml(c.nombres)} ${escapeHtml(c.apellidos)}</option>`).join('')}
             </select>
+            <span id="turno-conductor-aviso" class="card-meta hidden" style="font-size:11.5px;color:var(--text-secondary);">Conductor asignado al bus seleccionado</span>
           </div>
           <div class="field-group">
             <label class="field-label">Fecha</label>
@@ -166,7 +168,39 @@ export async function renderTurnos(container, searchQuery = '') {
       `,
       onMount(close) {
         const form = document.getElementById('turno-form');
-        const { km_inicial, km_final, recorrido } = form.elements;
+        const { id_unidad, id_conductor, km_inicial, km_final, recorrido } = form.elements;
+        const avisoConductor = document.getElementById('turno-conductor-aviso');
+
+        const actualizarAvisoConductor = () => {
+          const unidadId = Number(id_unidad.value);
+          const conductorId = Number(id_conductor.value);
+          const asignado = conductores.find(c => c.id_unidad === unidadId && (c.activo || c.id_conductor === existing?.id_conductor));
+          const coincide = Boolean(asignado && conductorId && asignado.id_conductor === conductorId);
+          avisoConductor?.classList.toggle('hidden', !coincide);
+        };
+
+        const onCambioUnidad = () => {
+          const unidadId = Number(id_unidad.value);
+          const asignado = conductores.find(c => c.id_unidad === unidadId && (c.activo || c.id_conductor === existing?.id_conductor));
+          if (asignado) {
+            id_conductor.value = String(asignado.id_conductor);
+          } else {
+            id_conductor.value = '';
+          }
+          errorCampo(id_conductor, '');
+          actualizarAvisoConductor();
+        };
+
+        id_unidad.addEventListener('change', onCambioUnidad);
+        id_conductor.addEventListener('change', actualizarAvisoConductor);
+        id_conductor.addEventListener('input', actualizarAvisoConductor);
+
+        if (!existing) {
+          onCambioUnidad();
+        } else {
+          actualizarAvisoConductor();
+        }
+
         const calcular = () => {
           const km = km_final.valueAsNumber - km_inicial.valueAsNumber;
           recorrido.value = km > 0 ? formatSpaceInt(km) + ' km' : '—';
