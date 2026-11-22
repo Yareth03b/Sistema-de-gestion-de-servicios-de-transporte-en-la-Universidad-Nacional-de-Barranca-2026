@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=6';
-import { showToast } from './utils.js?v=8';
+import { CONFIG } from './config.js?v=9';
+import { showToast } from './utils.js?v=9';
 
 let apiOnline = false;
 
@@ -245,11 +245,37 @@ export const api = {
   },
 
   // --- Estimación de Viaje ---
+  async getSolicitudes({ estado, id_area, desde, hasta } = {}) {
+    const params = new URLSearchParams();
+    for (const [clave, valor] of Object.entries({ estado, id_area, desde, hasta })) {
+      if (valor != null && valor !== '') params.set(clave, valor);
+    }
+    return request(params.size ? '/solicitudes?' + params : '/solicitudes');
+  },
+
+  async getSolicitud(id) {
+    return request(`/solicitudes/${id}`);
+  },
+
+  async saveSolicitud(payload, id = null) {
+    return request(id == null ? '/solicitudes' : `/solicitudes/${id}`, {
+      method: id == null ? 'POST' : 'PUT', body: JSON.stringify(payload),
+    });
+  },
+
+  async cambiarEstadoSolicitud(id, estado, observaciones) {
+    return request(`/solicitudes/${id}/estado`, {
+      method: 'PUT', body: JSON.stringify({ estado, observaciones }),
+    });
+  },
+
   async getEstimaciones() {
     return request('/estimacion');
   },
 
   async saveEstimacion(payload) {
-    return request('/estimacion', { method: 'POST', body: JSON.stringify(payload) });
+    return request('/estimacion', {
+      method: 'POST', body: JSON.stringify({ ...payload, id_solicitud: payload.id_solicitud ?? null }),
+    });
   },
 };
