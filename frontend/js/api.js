@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js';
-import { showToast } from './utils.js?v=3';
+import { CONFIG } from './config.js?v=4';
+import { showToast } from './utils.js?v=4';
 
 let apiOnline = false;
 
@@ -143,6 +143,20 @@ export const api = {
   // --- Mantenimiento ---
   async getMantenimientos() {
     return request('/mantenimiento');
+  },
+
+  async getBusesOperativos() {
+    return request('/dashboard/buses-operativos');
+  },
+
+  async guardarSalida(id, fecha, corregir) {
+    return request(`/mantenimiento/${id}/salida`, {
+      method: corregir ? 'PUT' : 'POST', body: JSON.stringify({ fecha_salida: fecha }),
+    });
+  },
+
+  async deshacerSalida(id) {
+    return request(`/mantenimiento/${id}/salida`, { method: 'DELETE' });
   },
 
   async saveMantenimiento(payload) {
