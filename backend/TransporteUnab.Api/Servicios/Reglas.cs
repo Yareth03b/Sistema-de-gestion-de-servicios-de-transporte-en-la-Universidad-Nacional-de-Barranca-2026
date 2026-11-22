@@ -28,6 +28,13 @@ public static class Reglas
     public const string EstadoOperativo = "Operativo";
     public const string EstadoInactivo = "Inactivo";
     public static readonly string[] TiposMantenimiento = { "Preventivo", "Correctivo", "Predictivo" };
+    /// <summary>Estados de SolicitudViaje (CK_SolicitudViaje_Estado). El primero es el inicial.</summary>
+    public static readonly string[] EstadosSolicitud = { "Pendiente", "Estimada", "Aprobada", "Rechazada" };
+
+    /// <summary>Normaliza el estado de una solicitud (sin distinguir mayúsculas) o lanza 400.</summary>
+    public static string EstadoSolicitud(string? estado)
+        => EstadosSolicitud.FirstOrDefault(e => e.Equals(estado?.Trim(), StringComparison.OrdinalIgnoreCase))
+           ?? throw new ReglaException($"Estado de solicitud no válido. Use: {string.Join(", ", EstadosSolicitud)}.");
 
     // ---------- Utilidades ----------
 

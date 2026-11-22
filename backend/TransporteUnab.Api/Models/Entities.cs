@@ -194,6 +194,28 @@ public class EstimacionViaje
     [Column(TypeName = "decimal(8,2)")] public decimal rendimiento_promedio { get; set; }
     [Column(TypeName = "decimal(8,2)")] public decimal precio_galon { get; set; }
     [Column(TypeName = "decimal(10,2)")] public decimal costo_estimado { get; set; }
+    /// <summary>Solicitud de viaje que originó la estimación (opcional).</summary>
+    public int? id_solicitud { get; set; }
+}
+
+[Table("SolicitudViaje")]
+public class SolicitudViaje
+{
+    [Key] public int id_solicitud { get; set; }
+    /// <summary>Código del documento físico; lo escribe el usuario. UNIQUE.</summary>
+    [Required, MaxLength(30)] public string codigo { get; set; } = string.Empty;
+    public int id_area { get; set; }
+    [Required, MaxLength(100)] public string encargado { get; set; } = string.Empty;
+    public DateTime fecha_salida { get; set; }
+    public TimeSpan hora_salida { get; set; }
+    public DateTime fecha_regreso { get; set; }
+    public TimeSpan hora_regreso { get; set; }
+    [Required, MaxLength(100)] public string lugar_procedencia { get; set; } = string.Empty;
+    [Required, MaxLength(100)] public string lugar_destino { get; set; } = string.Empty;
+    [Required, MaxLength(300)] public string motivo { get; set; } = string.Empty;
+    public int pasajeros { get; set; }
+    [Required, MaxLength(20)] public string estado { get; set; } = "Pendiente";
+    [MaxLength(300)] public string? observaciones { get; set; }
 }
 
 [Table("RegistroSesion")]
