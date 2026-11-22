@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { showToast } from '../utils.js';
+import { prepararCampos, errorCampo, showToast } from '../utils.js';
 
 const SESSION_KEY = 'unab_transporte_session';
 
@@ -20,11 +20,22 @@ export function initAuth(onLoginSuccess, onLogout) {
   const form = document.getElementById('login-form');
   const userInput = document.getElementById('login-usuario');
   const passInput = document.getElementById('login-password');
+  const remember = document.getElementById('login-remember');
+  const cargarUsuarioRecordado = () => {
+    const guardado = localStorage.getItem('unab_usuario_recordado');
+    userInput.value = guardado || '';
+    remember.checked = Boolean(guardado);
+  };
+  cargarUsuarioRecordado();
+  remember.addEventListener('change', () => {
+    if (!remember.checked) localStorage.removeItem('unab_usuario_recordado');
+  });
   const toggleBtn = document.getElementById('toggle-password-btn');
   const errEl = document.getElementById('login-error');
   const submitBtn = document.getElementById('login-submit-btn');
   const logoutBtn = document.getElementById('logout-btn');
 
+  prepararCampos(form);
   toggleBtn.addEventListener('click', () => {
     passInput.type = passInput.type === 'password' ? 'text' : 'password';
   });
@@ -35,6 +46,9 @@ export function initAuth(onLoginSuccess, onLogout) {
     const usuario = userInput.value.trim();
     const contrasenia = passInput.value;
     if (!usuario || !contrasenia) {
+      if (!usuario) errorCampo(userInput, 'Ingresa tu usuario.');
+      if (!contrasenia) errorCampo(passInput, 'Ingresa tu contraseña.');
+      (usuario ? passInput : userInput).focus();
       errEl.textContent = 'Ingresa tu usuario y contraseña.';
       errEl.classList.remove('hidden');
       return;
@@ -42,6 +56,7 @@ export function initAuth(onLoginSuccess, onLogout) {
     submitBtn.disabled = true;
     try {
       const session = await api.login(usuario, contrasenia);
+      if (remember.checked) localStorage.setItem('unab_usuario_recordado', usuario);
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
       showToast(`Bienvenido, ${session.nombre_completo}`, 'success');
       onLoginSuccess(session);
@@ -62,6 +77,8 @@ export function initAuth(onLoginSuccess, onLogout) {
       return;
     }
     clearSession();
+    form.reset();
+    cargarUsuarioRecordado();
     onLogout();
   });
 }
