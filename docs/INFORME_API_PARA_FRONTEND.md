@@ -1,4 +1,4 @@
-# Informe de la API para el frontend (rama `fix/api-bd-monsterasp`)
+# Informe de la API para el frontend
 
 Fecha: 18/11/2026. Cambios de contrato JSON de `backend/TransporteUnab.Api` que la web debe conocer.
 Ningún campo existente cambió de nombre. Los cambios son campos nuevos, valores que antes eran falsos
@@ -103,3 +103,132 @@ Sin cambios necesarios: login/logout (`id_sesion`, `nombre_completo`, `rol`), he
 - CORS `AllowAnyOrigin`. Sin rate limiting en `/auth/login`.
 - NU1902/NU1903: `System.Security.Cryptography.Pkcs` 9.0.4 vulnerable (dependencia transitiva).
 - En `deploy-api.yml` las credenciales FTP se interpolan directamente en los comandos `curl`.
+
+## 7. Taller: ingreso y salida del mantenimiento (rama `feat/taller-reportes`, 21/11/2026)
+
+`Mantenimiento.fecha` es la fecha de **ingreso** al taller; `fecha_salida` (nueva, `DATE NULL`) es la **salida**.
+`fecha_salida = null` significa que el bus sigue en taller. La BD tiene `CK_Mantenimiento_Salida` (salida ≥ ingreso).
+
+### 7.1 Campos nuevos en las respuestas de `/api/mantenimiento`
+
+Todas las respuestas de `/api/mantenimiento` (GET, GET por id, POST y las de salida) tienen esta forma.
+Las fechas van como `yyyy-MM-dd` (el POST antes devolvía la entidad con `fecha` en formato `2026-11-18T00:00:00`).
+
+```json
+{
+  "id_mantenimiento": 7, "id_unidad": 2, "placa": "ABC-001",
+  "fecha": "2026-11-18", "km": 12500, "tipo": "Preventivo",
+  "detalle": "Cambio de aceite", "foto": "https://enlace-a-la-foto",
+  "fecha_salida": null,
+  "abierto": true,
+  "en_taller_hoy": true,
+  "dias_en_taller": 3
+}
+```
+
+- `abierto`: `fecha_salida` es `null`.
+- `en_taller_hoy`: `fecha <= hoy` y (`fecha_salida` es `null` o `fecha_salida > hoy`), con hoy en hora de Lima.
+- `dias_en_taller`: `fecha_salida − fecha` o, si sigue abierto, `hoy − fecha`. Si entra y sale el mismo día, da `0`.
+- `foto`: decisión D3. Es un enlace de texto (máx. 260 caracteres) en el campo que ya existía. La API no sube archivos.
+
+### 7.2 Endpoints
+
+| Verbo y ruta | Cuerpo | Qué hace | Errores |
+|---|---|---|---|
+| `GET /api/mantenimiento` | — | Lista, del más reciente al más antiguo | — |
+| `GET /api/mantenimiento/{id}` | — | Un mantenimiento | 404 si no existe |
+| `POST /api/mantenimiento` | `{ id_unidad, fecha, km, tipo, detalle?, foto?, fecha_salida? }` | Registra el ingreso. Sin `fecha_salida`, queda abierto (en taller). Con `fecha_salida`, se registra ya cerrado (historial antiguo) | 400 si no es bus, el tipo no es válido, el km es negativo o la salida es anterior al ingreso · 400 `V-06` si el ingreso o la salida son futuros · **409 si el bus ya tiene un mantenimiento abierto** |
+| `POST /api/mantenimiento/{id}/salida` | opcional: `{ "fecha_salida": "2026-11-21" }` | Registra la salida. Sin cuerpo o sin fecha, usa **hoy (Lima)** | 404 si no existe · 409 si ya tiene salida (para corregirla, usar PUT) · 400 si la salida es anterior al ingreso · 400 `V-06` si la salida es futura |
+| `PUT /api/mantenimiento/{id}/salida` | `{ "fecha_salida": "2026-11-20" }` (obligatorio) | Corrige la fecha de salida. También sirve para fijarla si el mantenimiento está abierto | 404 · 400 si falta `fecha_salida` · 400 si la salida es anterior al ingreso · 400 `V-06` si es futura |
+| `DELETE /api/mantenimiento/{id}/salida` | — | **Deshace** una salida registrada por error: `fecha_salida` vuelve a `null` y el bus queda otra vez en taller | 404 · 409 si no tenía salida · 409 si el bus ya tiene otro mantenimiento abierto · 409 si hay un ingreso posterior de ese bus (en ese caso, corregir con PUT) |
+
+Ejemplos de error:
+
+```json
+{ "message": "El bus ABC-001 ya está en taller desde el 18/11/2026 (mantenimiento 2). Registre su salida antes de un nuevo ingreso.", "codigo": null }
+{ "message": "La fecha de salida (17/11/2026) no puede ser anterior a la de ingreso (18/11/2026).", "codigo": null }
+{ "message": "La fecha de salida (25/11/2026) no puede ser futura.", "codigo": "V-06" }
+{ "message": "El mantenimiento 2 ya tiene salida registrada el 21/11/2026. Para corregirla use PUT /api/mantenimiento/2/salida.", "codigo": null }
+```
+
+**Regla:** cada bus puede tener **un solo mantenimiento abierto**. Si hay que registrar varios trabajos en un
+mismo ingreso, se describen en `detalle` o se registran cerrados (con `fecha_salida`).
+
+### 7.3 Estado de la unidad derivado (`GET /api/unidades`)
+
+Un bus está **«En mantenimiento»** si tiene un mantenimiento con `fecha <= hoy` y (`fecha_salida` es `null`
+o `fecha_salida > hoy`). Si no, se muestra el estado guardado. El día de la salida ya cuenta como operativo
+desde las 00:00 (hora de Lima). Se calcula en cada consulta: no hay procesos en segundo plano.
+Las unidades dadas de baja (`activo = false`) muestran siempre su estado guardado.
+
+Campos de cada unidad (los nuevos se explican debajo):
+
+```json
+{
+  "id_unidad": 2, "placa": "ABC-001", "tipo": "Bus", "...": "...",
+  "estado": "En mantenimiento",
+  "estado_guardado": "Operativo",
+  "en_taller": true,
+  "id_mantenimiento_taller": 2,
+  "taller_desde": "2026-11-18",
+  "dias_en_taller": 3,
+  "activo": true, "numero_bus": "001", "km_actual": 1180
+}
+```
+
+- `estado` **ahora es el estado derivado**. Es el que debe mostrarse, y con él `dashboard.js` («Buses operativos
+  hoy», `u.estado === 'Operativo'`) ya cuenta bien sin cambios.
+- `estado_guardado` *(nuevo)* es el valor de la columna. **El formulario de edición debe precargar
+  `estado_guardado`, no `estado`.** Por seguridad, si un PUT envía «En mantenimiento» mientras el bus está en
+  taller, la API conserva el estado guardado.
+- `en_taller`, `id_mantenimiento_taller`, `taller_desde` y `dias_en_taller` son nuevos. Valen `false` o `null`
+  si el bus no está en taller.
+- Al registrar o corregir una salida, si la unidad tenía guardado «En mantenimiento» (puesto a mano) y ya no queda
+  ningún mantenimiento abierto, el estado guardado pasa a «Operativo». Si no, el bus seguiría mostrándose en
+  mantenimiento para siempre.
+- Recomendación para la web: quitar «En mantenimiento» de las opciones del selector de estado de la unidad.
+  Ahora ese estado se obtiene registrando el ingreso al taller.
+
+`GET /api/unidades/{id}/historial` agrega `estado_actual` y `en_taller`. Cada elemento de `mantenimientos`
+trae además `fecha_salida` y `dias_en_taller`. Las fechas mantienen el formato que ya tenía ese endpoint.
+
+### 7.4 `GET /api/dashboard/buses-operativos` (nuevo)
+
+```json
+{
+  "fecha": "2026-11-21",
+  "total_buses": 3,
+  "operativos": 1,
+  "en_taller": 1,
+  "buses": [
+    { "id_unidad": 2, "placa": "ABC-001", "numero_bus": "001", "estado": "En mantenimiento", "en_taller": true },
+    { "id_unidad": 4, "placa": "ABC-003", "numero_bus": "003", "estado": "En mantenimiento", "en_taller": false },
+    { "id_unidad": 1, "placa": "ABC-005", "numero_bus": "005", "estado": "Operativo", "en_taller": false }
+  ]
+}
+```
+
+Solo cuenta buses activos. `operativos` = buses cuyo estado derivado es «Operativo». Un bus puede estar
+«En mantenimiento» con `en_taller: false` si así lo tiene guardado a mano (el caso de ABC-003 en la BD actual).
+
+### 7.5 Aviso al registrar un turno de un bus en taller
+
+`POST /api/turnos` y `PUT /api/turnos/{id}` **no bloquean** si el bus figura en taller en la fecha del turno.
+La respuesta trae los mismos campos que antes más `aviso` (texto, o `null` si no hay nada que avisar):
+
+```json
+{
+  "id_turno": 12, "id_unidad": 2, "id_conductor": 2, "fecha": "2026-11-20T00:00:00",
+  "hora_salida": "07:00:00", "hora_llegada": "09:00:00", "km_inicial": 1000, "km_final": 1050,
+  "km_recorridos": 50, "observaciones": null,
+  "aviso": "El bus ABC-001 figura en taller el 20/11/2026 (ingresó el 18/11/2026, mantenimiento 2). El turno se guardó; si el bus ya salió, registre la salida del mantenimiento."
+}
+```
+
+**Web:** si `aviso` no es `null`, mostrarlo (por ejemplo, como toast de advertencia) además del mensaje de guardado.
+
+### 7.6 Datos actuales en la BD
+
+Hay dos mantenimientos de ABC-001 del 18/11/2026, idénticos y sin salida (ids 1 y 2; probablemente un doble envío).
+No se cambió ningún dato. Con esta versión, ABC-001 figura en taller hasta que se registre la salida de **ambos**.
+La regla de «uno abierto por bus» solo se aplica a los ingresos nuevos.

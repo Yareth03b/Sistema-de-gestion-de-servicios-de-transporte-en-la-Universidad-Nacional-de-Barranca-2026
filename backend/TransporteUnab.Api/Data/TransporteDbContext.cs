@@ -140,7 +140,10 @@ public class TransporteDbContext : DbContext
 
         mb.Entity<Mantenimiento>(e =>
         {
+            e.ToTable(t => t.HasCheckConstraint("CK_Mantenimiento_Salida",
+                "fecha_salida IS NULL OR fecha_salida >= fecha"));
             e.Property(x => x.fecha).HasColumnType("date");
+            e.Property(x => x.fecha_salida).HasColumnType("date");
             e.HasOne<UnidadTransporte>().WithMany().HasForeignKey(x => x.id_unidad)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Mantenimiento_Unidad");
         });
