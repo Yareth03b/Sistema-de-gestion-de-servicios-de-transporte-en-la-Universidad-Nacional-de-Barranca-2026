@@ -439,3 +439,114 @@ tienen referencia dentro del periodo. Detalle en 8.1, con el campo nuevo `galone
 - El cierre de T4, calculado en memoria con los datos reales y sin guardar, coincide en cada unidad con
   `por-unidad?desde=2026-10-01&hasta=2026-12-31`.
 - Diferencia de presentación: la API redondea a 2 decimales y el dashboard muestra 1 (214,62 frente a 214,6).
+
+## 11. Solicitudes de viaje (rama `feat/solicitudes-viaje`, 23/11/2026)
+
+En la BD ya existen la tabla `SolicitudViaje` y la columna `EstimacionViaje.id_solicitud` (`NULL`, FK). La API no
+cambia el esquema.
+
+**Flujo:** el área entrega un documento físico → se registra la solicitud (**Pendiente**) → se registran una o más
+estimaciones con su `id_solicitud` (la primera la pasa a **Estimada**) → se marca **Aprobada** o **Rechazada**.
+
+### 11.1 Forma de una solicitud (todas las respuestas de `/api/solicitudes`)
+
+```json
+{
+  "id_solicitud": 1,
+  "codigo": "SV-2026-001",
+  "id_area": 1,
+  "area_nombre": "Facultad de Ingeniería",
+  "encargado": "Ing. Rosa Quispe",
+  "fecha_salida": "2026-12-05",
+  "hora_salida": "06:30",
+  "fecha_regreso": "2026-12-05",
+  "hora_regreso": "19:00",
+  "lugar_procedencia": "UNAB - Barranca",
+  "lugar_destino": "Lima",
+  "motivo": "Visita técnica a planta",
+  "pasajeros": 35,
+  "estado": "Pendiente",
+  "observaciones": null,
+  "cantidad_estimaciones": 0
+}
+```
+
+- Fechas en formato `yyyy-MM-dd` y horas en `HH:mm`, en hora de Lima, tal como figuran en el documento.
+- `area_nombre` viene del área. `cantidad_estimaciones` es el número de estimaciones con ese `id_solicitud`.
+
+### 11.2 Endpoints
+
+| Verbo y ruta | Cuerpo / parámetros | Qué hace | Errores |
+|---|---|---|---|
+| `GET /api/solicitudes` | Filtros opcionales: `estado`, `id_area`, `desde`, `hasta` (`yyyy-MM-dd`, inclusive; filtran por `fecha_salida`) | Lista, de la salida más reciente a la más antigua | 400 si `estado` no es válido o si `hasta` es anterior a `desde` |
+| `GET /api/solicitudes/{id}` | — | Una solicitud | 404 |
+| `POST /api/solicitudes` | Ver el cuerpo abajo (sin `estado`) | Crea la solicitud, siempre en **Pendiente** | 400 validaciones · **409 si el código ya existe** |
+| `PUT /api/solicitudes/{id}` | El mismo cuerpo que el POST | Corrige los datos. **No cambia el estado** | 404 · 400 · 409 si el código nuevo ya lo usa otra solicitud |
+| `PUT /api/solicitudes/{id}/estado` | `{ "estado": "Aprobada", "observaciones": "opcional" }` | Cambia el estado. Si se envía `observaciones`, las reemplaza; si no, las conserva | 404 · 400 si el estado no es válido |
+
+Cuerpo de POST y PUT:
+
+```json
+{
+  "codigo": "SV-2026-001",
+  "id_area": 1,
+  "encargado": "Ing. Rosa Quispe",
+  "fecha_salida": "2026-12-05",
+  "hora_salida": "06:30",
+  "fecha_regreso": "2026-12-05",
+  "hora_regreso": "19:00",
+  "lugar_procedencia": "UNAB - Barranca",
+  "lugar_destino": "Lima",
+  "motivo": "Visita técnica a planta",
+  "pasajeros": 35,
+  "observaciones": null
+}
+```
+
+### 11.3 Validaciones
+
+- `codigo`: obligatorio, máx. 30 caracteres (se recortan los espacios). Lo escribe el usuario a partir del documento
+  físico. Es **único**, sin distinguir mayúsculas: si ya existe, devuelve **409** con `codigo: "V-07"`.
+- `id_area`: el área debe existir.
+- `encargado`, `lugar_procedencia` y `lugar_destino`: obligatorios, máx. 100. `motivo`: obligatorio, máx. 300.
+  `observaciones`: opcional, máx. 300.
+- `pasajeros` > 0.
+- El regreso debe ser **posterior** a la salida, comparando fecha y hora juntas (hora de Lima). Se puede regresar al
+  día siguiente con una hora menor (por ejemplo, salida 10/12 22:00 y regreso 11/12 05:00).
+- `estado` (solo en `PUT /estado` y en el filtro): `Pendiente`, `Estimada`, `Aprobada` o `Rechazada`, sin distinguir
+  mayúsculas. La API lo guarda con la forma oficial.
+- No se exige que la salida sea futura: las solicitudes se pueden registrar después del viaje.
+- Los cambios de estado son libres entre los cuatro valores. La API no impone transiciones.
+
+Ejemplos de error:
+
+```json
+{ "message": "Ya existe una solicitud de viaje con el código 'SV-2026-001'.", "codigo": "V-07" }
+{ "message": "El regreso (05/12/2026 06:30) debe ser posterior a la salida (05/12/2026 06:30).", "codigo": null }
+{ "message": "Estado de solicitud no válido. Use: Pendiente, Estimada, Aprobada, Rechazada.", "codigo": null }
+```
+
+### 11.4 Cambios en `/api/estimacion`
+
+- `POST /api/estimacion` acepta **`id_solicitud`** (opcional). Con `0` o `null` se registra sin solicitud, igual que
+  antes. Si viene, la solicitud debe existir (400 si no). Si estaba en **Pendiente**, pasa a **Estimada** en la misma
+  transacción. Si ya estaba en otro estado, no cambia. La respuesta es la estimación guardada, que ahora incluye
+  `id_solicitud`.
+
+```json
+{ "id_unidad": 1, "fecha": "2026-11-23", "destino": "Lima", "distancia_km": 400,
+  "rendimiento_promedio": 10.0, "precio_galon": 16.0, "id_solicitud": 1 }
+```
+
+- `GET /api/estimacion` agrega tres campos (`null` si la estimación no tiene solicitud):
+
+```json
+{ "id_estimacion": 3, "id_unidad": 1, "fecha": "2026-11-23", "destino": "Lima", "distancia_km": 400,
+  "rendimiento_promedio": 10.00, "precio_galon": 16.00, "costo_estimado": 640.00,
+  "id_solicitud": 1, "codigo_solicitud": "SV-2026-001", "area_nombre": "Facultad de Ingeniería" }
+```
+
+### 11.5 Áreas
+
+Las áreas se siguen obteniendo con `GET /api/rutas` (`{ rutas, areas }`), sin cambios. No existe una ruta
+`/api/rutas-y-costos`: la pantalla «Rutas y costos» usa `GET /api/rutas`.
