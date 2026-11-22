@@ -85,6 +85,7 @@ public class ManejadorErrores : IExceptionHandler
             547 when m.Contains("CK_BitacoraTurno_Horas") => (400, "La hora de llegada debe ser posterior a la de salida.", "V-05"),
             547 when m.Contains("CK_Abastecimiento_Galones") => (400, "La cantidad de galones debe ser mayor a 0.", "V-04"),
             547 when m.Contains("CK_Conductor_Dni") => (400, "El DNI debe tener exactamente 8 dígitos numéricos.", "V-08"),
+            547 when m.Contains("CK_Mantenimiento_Salida") => (400, "La fecha de salida del taller no puede ser anterior a la de ingreso.", null),
             547 when m.Contains("CK_") => (400, "Los datos no cumplen una regla de la base de datos.", null),
             547 when m.Contains("DELETE") => (409, "No se puede eliminar: el registro tiene historial asociado.", "V-11"),
             547 => (400, "Uno de los registros relacionados no existe.", null),
