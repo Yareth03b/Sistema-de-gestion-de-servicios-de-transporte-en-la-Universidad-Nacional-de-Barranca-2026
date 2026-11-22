@@ -1,11 +1,11 @@
 import { api } from './api.js?v=6';
 import { CONFIG } from './config.js?v=6';
 import { formatDateES, showToast } from './utils.js?v=6';
-import { initAuth, clearSession } from './modules/auth.js?v=6';
+import { initAuth, clearSession, getSession } from './modules/auth.js?v=6';
 import { renderDashboard } from './modules/dashboard.js?v=6';
 import { renderTurnos } from './modules/turnos.js?v=6';
 import { renderCombustible } from './modules/combustible.js?v=6';
-import { renderUnidades } from './modules/unidades.js?v=6';
+import { renderUnidades } from './modules/unidades.js?v=7';
 import { renderMantenimiento } from './modules/mantenimiento.js?v=6';
 import { renderConductores } from './modules/conductores.js?v=6';
 import { renderRutas } from './modules/rutas.js?v=6';
@@ -27,10 +27,25 @@ const ROUTES = {
 };
 
 let currentRoute = 'dashboard';
+let currentParam = null;
 
-async function navigate(route) {
-  if (!ROUTES[route]) route = 'dashboard';
+function parseHash(hash = window.location.hash) {
+  const clean = hash.replace(/^#\/?/, '').trim();
+  const [baseRoute, ...rest] = clean.split('/');
+  return {
+    raw: clean,
+    baseRoute: baseRoute || 'dashboard',
+    param: rest.join('/') || null,
+  };
+}
+
+async function renderView(route, param = null) {
+  if (!ROUTES[route]) {
+    route = 'dashboard';
+    param = null;
+  }
   currentRoute = route;
+  currentParam = param;
   const cfg = ROUTES[route];
 
   document.querySelectorAll('.nav-item').forEach((btn) => {
@@ -38,13 +53,15 @@ async function navigate(route) {
   });
 
   document.getElementById('topbar-title').textContent = cfg.title;
-  document.getElementById('topbar-subtitle').textContent = typeof cfg.subtitle === 'function' ? cfg.subtitle() : cfg.subtitle;
+  document.getElementById('topbar-subtitle').textContent = param
+    ? 'Ficha de unidad'
+    : (typeof cfg.subtitle === 'function' ? cfg.subtitle() : cfg.subtitle);
   document.getElementById('topbar-date').textContent = formatDateES(CONFIG.REFERENCE_DATE);
   const activeNav = document.querySelector(`.nav-item[data-route="${route}"] svg`);
   document.getElementById('topbar-icon').innerHTML = activeNav ? activeNav.outerHTML : '';
 
   const actionsEl = document.getElementById('topbar-actions');
-  actionsEl.innerHTML = cfg.cta ? `<button id="primary-cta-btn" class="btn btn-primary">${cfg.cta}</button>` : '';
+  actionsEl.innerHTML = (cfg.cta && !param) ? `<button id="primary-cta-btn" class="btn btn-primary">${cfg.cta}</button>` : '';
 
   const container = document.getElementById('view-container');
   const searchVal = document.getElementById('global-search-input').value || '';
@@ -52,7 +69,7 @@ async function navigate(route) {
   container.replaceWith(view);
   let result;
   try {
-    result = await cfg.render(view, route === 'dashboard' ? navigate : searchVal);
+    result = await cfg.render(view, route === 'dashboard' ? navigate : searchVal, param);
   } catch (err) {
     if (!view.isConnected) return;
     actionsEl.replaceChildren();
@@ -61,11 +78,40 @@ async function navigate(route) {
   }
   if (!view.isConnected) return;
 
-  if (cfg.cta && result?.onPrimaryAction) {
-    document.getElementById('primary-cta-btn').addEventListener('click', result.onPrimaryAction);
+  if (cfg.cta && !param && result?.onPrimaryAction) {
+    document.getElementById('primary-cta-btn')?.addEventListener('click', result.onPrimaryAction);
   }
 
   document.getElementById('sidebar').classList.remove('open');
+}
+
+function navigate(path) {
+  const clean = String(path || 'dashboard').replace(/^#\/?/, '').trim();
+  const targetHash = '#/' + clean;
+  if (window.location.hash !== targetHash) {
+    window.location.hash = targetHash;
+  } else {
+    const { baseRoute, param } = parseHash(targetHash);
+    renderView(baseRoute, param);
+  }
+}
+
+function handleRouteFromHash() {
+  if (!getSession()) {
+    showLogin();
+    return;
+  }
+  const { baseRoute, param } = parseHash();
+  if (!ROUTES[baseRoute]) {
+    history.replaceState(null, '', '#/dashboard');
+    renderView('dashboard', null);
+    return;
+  }
+  const normalized = '#/' + (param ? `${baseRoute}/${param}` : baseRoute);
+  if (window.location.hash !== normalized) {
+    history.replaceState(null, '', normalized);
+  }
+  renderView(baseRoute, param);
 }
 
 function showApp(session) {
@@ -75,17 +121,36 @@ function showApp(session) {
   document.getElementById('sidebar-user-handle').textContent = session.nombre_usuario || 'admin';
   document.getElementById('topbar-date').textContent = formatDateES(CONFIG.REFERENCE_DATE);
   api.checkHealth().catch(err => showToast(err.message, 'error'));
-  navigate('dashboard');
+  handleRouteFromHash();
 }
 
 function showLogin() {
   document.getElementById('app-shell').classList.add('hidden');
   document.getElementById('login-view').classList.remove('hidden');
+  document.getElementById('view-container')?.replaceChildren();
+}
+
+function handleLogout() {
+  clearSession();
+  showLogin();
+  history.replaceState(null, '', window.location.pathname + window.location.search);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.addEventListener('actualizar-vista', () => navigate(currentRoute));
-  initAuth(showApp, showLogin);
+  window.addEventListener('hashchange', () => {
+    if (!getSession()) {
+      showLogin();
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+      return;
+    }
+    handleRouteFromHash();
+  });
+
+  document.addEventListener('actualizar-vista', () => {
+    renderView(currentRoute, currentParam);
+  });
+
+  initAuth(showApp, handleLogout);
 
   document.querySelectorAll('.nav-item').forEach((btn) => {
     btn.addEventListener('click', () => navigate(btn.dataset.route));
@@ -96,12 +161,15 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('global-search-input').addEventListener('input', () => {
-    if (currentRoute !== 'dashboard') navigate(currentRoute);
+    if (currentRoute !== 'dashboard') renderView(currentRoute, currentParam);
   });
 
   document.getElementById('notif-btn').addEventListener('click', () => navigate('dashboard'));
 
-  clearSession();
-  showLogin();
-
+  const session = getSession();
+  if (session) {
+    showApp(session);
+  } else {
+    showLogin();
+  }
 });

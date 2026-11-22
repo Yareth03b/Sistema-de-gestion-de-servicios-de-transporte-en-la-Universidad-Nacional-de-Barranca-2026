@@ -24,7 +24,7 @@ function estadoUnidad(u) {
     ${u.en_taller ? `<span>Días en taller: ${formatSpaceInt(u.dias_en_taller)}</span>` : ''}`;
 }
 
-export async function renderUnidades(container, searchQuery = '') {
+export async function renderUnidades(container, searchQuery = '', unidadIdParam = null) {
   const unidades = await api.getUnidades(true);
   let fichaSolicitada = 0;
 
@@ -94,7 +94,9 @@ export async function renderUnidades(container, searchQuery = '') {
     });
 
     container.querySelectorAll('[data-hist-unidad]').forEach((btn) => {
-      btn.addEventListener('click', () => openHistorial(Number(btn.dataset.histUnidad)));
+      btn.addEventListener('click', () => {
+        window.location.hash = '#/unidades/' + btn.dataset.histUnidad;
+      });
     });
   };
 
@@ -208,7 +210,13 @@ export async function renderUnidades(container, searchQuery = '') {
         });
       };
     });
-    document.getElementById('back-unidades').addEventListener('click', () => container.dispatchEvent(new Event('actualizar-vista', { bubbles: true })));
+    document.getElementById('back-unidades').addEventListener('click', () => {
+      if (window.location.hash.startsWith('#/unidades/')) {
+        window.location.hash = '#/unidades';
+      } else {
+        container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
+      }
+    });
     document.getElementById('btn-nuevo-inc').addEventListener('click', () => openIncidenteModal(idUnidad, null));
     document.getElementById('btn-nuevo-doc').addEventListener('click', () => openDocumentoModal(idUnidad));
     container.querySelectorAll('[data-edit-doc]').forEach(btn => {
@@ -385,6 +393,10 @@ export async function renderUnidades(container, searchQuery = '') {
     });
   };
 
-  paintList();
+  if (unidadIdParam && Number.isFinite(Number(unidadIdParam))) {
+    openHistorial(Number(unidadIdParam));
+  } else {
+    paintList();
+  }
   return { onPrimaryAction: () => openUnidadModal(null) };
 }
