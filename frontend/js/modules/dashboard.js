@@ -5,13 +5,14 @@ import { esBus, rendimientoPeriodo, rendimientoFlota, formatNumber, formatSpaceI
 
 export async function renderDashboard(container, navigate) {
   let mantenimientoError = '';
+  let busesOperativosError = '';
   const [unidades, todosTurnos, todosVales, listado, concil, operatividad] = await Promise.all([
     api.getUnidades(),
     api.getTurnos(),
     api.getAbastecimientos(),
     api.getMantenimientos().catch(err => { mantenimientoError = err.message; return null; }),
     api.getConciliacion(),
-    api.getBusesOperativos(),
+    api.getBusesOperativos().catch(err => { busesOperativosError = err.message; return null; }),
   ]);
   const historiales = await Promise.all(unidades.map(u => api.getUnidadHistorial(u.id_unidad)));
   const mants = listado ?? historiales.flatMap(h => h.mantenimientos);
@@ -24,6 +25,11 @@ export async function renderDashboard(container, navigate) {
   const galMes = abasts.reduce((s, a) => s + Number(a.galones), 0);
   const rendProm = rendimientoFlota(abasts);
   const buses = unidades.filter((u) => u.activo !== false && esBus(u));
+  const operatividadCalculada = {
+    total_buses: buses.length,
+    operativos: buses.filter((b) => !b.en_taller && (b.estado || '').trim().toLowerCase() === 'operativo').length,
+  };
+  const busesOperativosHoy = operatividad ?? operatividadCalculada;
 
 
   // Alertas dinámicas de mantenimiento y documentos
@@ -120,6 +126,7 @@ export async function renderDashboard(container, navigate) {
 
   container.innerHTML = `
     ${mantenimientoError ? `<p role="alert">Listado de mantenimiento no disponible. Se usaron los historiales de las unidades activas. ${escapeHtml(mantenimientoError)}</p>` : ''}
+    ${busesOperativosError ? `<p role="alert">Operatividad de buses no disponible. Se calculó a partir de la lista de unidades. ${escapeHtml(busesOperativosError)}</p>` : ''}
     <div class="dash-top-grid">
       <section class="card">
         <div class="card-header">
@@ -217,7 +224,7 @@ export async function renderDashboard(container, navigate) {
             </svg>
           </span>
         </div>
-        <div><span class="kpi-value">${operatividad.operativos}</span>${operatividad.total_buses ? `<span class="kpi-unit">/ ${operatividad.total_buses}</span>` : ''}</div>
+        <div><span class="kpi-value">${busesOperativosHoy.operativos}</span>${busesOperativosHoy.total_buses ? `<span class="kpi-unit">/ ${busesOperativosHoy.total_buses}</span>` : ''}</div>
       </article>
     </div>
 
