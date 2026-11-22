@@ -110,6 +110,33 @@
   }
 }
 
+/* Solicitudes de viaje */
+.solicitud-acciones {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: var(--space-2) var(--space-3);
+}
+
+.solicitud-resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  background: var(--bg-table-head);
+  border-radius: var(--radius-md);
+  overflow-wrap: anywhere;
+}
+
+.solicitud-resumen dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.solicitud-resumen dd {
+  margin: 0;
+}
+
 /* 02 Dashboard */
 .dash-top-grid {
   display: grid;
