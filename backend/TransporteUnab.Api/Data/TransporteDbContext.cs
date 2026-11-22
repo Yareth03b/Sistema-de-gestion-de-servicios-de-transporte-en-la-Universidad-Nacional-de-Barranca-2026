@@ -30,6 +30,7 @@ public class TransporteDbContext : DbContext
     public DbSet<DocumentoUnidad> DocumentosUnidad => Set<DocumentoUnidad>();
     public DbSet<Incidente> Incidentes => Set<Incidente>();
     public DbSet<EstimacionViaje> EstimacionesViaje => Set<EstimacionViaje>();
+    public DbSet<SolicitudViaje> SolicitudesViaje => Set<SolicitudViaje>();
     public DbSet<RegistroSesion> RegistrosSesion => Set<RegistroSesion>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -170,6 +171,28 @@ public class TransporteDbContext : DbContext
             e.Property(x => x.costo_estimado).HasColumnType("decimal(10,2)");
             e.HasOne<UnidadTransporte>().WithMany().HasForeignKey(x => x.id_unidad)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_EstimacionViaje_Unidad");
+            e.HasOne<SolicitudViaje>().WithMany().HasForeignKey(x => x.id_solicitud)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_EstimacionViaje_Solicitud");
+        });
+
+        mb.Entity<SolicitudViaje>(e =>
+        {
+            e.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_SolicitudViaje_Pasajeros", "pasajeros > 0");
+                t.HasCheckConstraint("CK_SolicitudViaje_Estado",
+                    "estado IN ('Pendiente','Estimada','Aprobada','Rechazada')");
+                t.HasCheckConstraint("CK_SolicitudViaje_Fechas",
+                    "fecha_regreso > fecha_salida OR (fecha_regreso = fecha_salida AND hora_regreso > hora_salida)");
+            });
+            e.HasIndex(x => x.codigo).IsUnique().HasDatabaseName("UQ_SolicitudViaje_Codigo");
+            e.Property(x => x.fecha_salida).HasColumnType("date");
+            e.Property(x => x.fecha_regreso).HasColumnType("date");
+            e.Property(x => x.hora_salida).HasColumnType("time(0)");
+            e.Property(x => x.hora_regreso).HasColumnType("time(0)");
+            e.Property(x => x.estado).HasDefaultValue("Pendiente");
+            e.HasOne<AreaSolicitante>().WithMany().HasForeignKey(x => x.id_area)
+                .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_SolicitudViaje_Area");
         });
 
         mb.Entity<RegistroSesion>(e =>
