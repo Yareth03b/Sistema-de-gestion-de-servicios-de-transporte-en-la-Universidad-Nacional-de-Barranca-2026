@@ -34,6 +34,105 @@ public class MantenimientoController : ControllerBase
         return Ok(list.Select(x => Respuesta(x.m, x.placa)));
     }
 
+    /// <summary>Cada cuántos km toca el mantenimiento preventivo (S-02).</summary>
+    public const int IntervaloPreventivoKm = 5000;
+
+    /// <summary>Faltando esta cantidad de km o menos, el preventivo figura como «proximo».</summary>
+    public const int UmbralProximoKm = 500;
+
+    /// <summary>
+    /// HU-09: próximos mantenimientos preventivos, una fila por bus activo.
+    /// Solo el mantenimiento Preventivo reinicia el conteo (S-02). El promedio diario sale de los km de los últimos
+    /// ?ventana_dias días (30 por defecto), con la misma fórmula y el mismo criterio de días (?dias=calendario|habiles)
+    /// que /api/reportes/por-unidad. Lo que no se puede calcular va en null (nunca 0 ni error).
+    /// </summary>
+    [HttpGet("proximos")]
+    public async Task<IActionResult> Proximos([FromQuery] string? dias, [FromQuery] int? ventana_dias)
+    {
+        var habiles = Calculos.EsDiasHabiles(dias);
+        var ventana = ventana_dias ?? 30;
+        if (ventana is < 7 or > 365) throw new ReglaException("El parámetro 'ventana_dias' debe estar entre 7 y 365.");
+
+        var hoy = HoraPeru.Hoy;
+        var desde = hoy.AddDays(-(ventana - 1));
+        var diasContados = Calculos.ContarDias(desde, hoy, habiles);
+
+        var buses = (await _db.Unidades.AsNoTracking().Where(u => u.activo)
+                .Select(u => new
+                {
+                    u.id_unidad,
+                    u.placa,
+                    u.tipo,
+                    km_turnos = _db.BitacoraTurnos.Where(t => t.id_unidad == u.id_unidad).Max(t => (int?)t.km_final),
+                    km_vales = _db.Abastecimientos.Where(a => a.id_unidad == u.id_unidad).Max(a => (int?)a.km_actual)
+                })
+                .ToListAsync())
+            .Where(u => u.tipo.Trim().StartsWith("Bus", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var ids = buses.Select(b => b.id_unidad).ToList();
+
+        // Último preventivo de cada bus: el de fecha más reciente (a igual fecha, el de mayor km).
+        var preventivos = (await _db.Mantenimientos.AsNoTracking()
+                .Where(m => ids.Contains(m.id_unidad) && m.tipo == "Preventivo")
+                .Select(m => new { m.id_unidad, m.id_mantenimiento, m.fecha, m.km })
+                .ToListAsync())
+            .GroupBy(m => m.id_unidad)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(m => m.fecha).ThenByDescending(m => m.km)
+                .ThenByDescending(m => m.id_mantenimiento).First());
+        var taller = await Taller.EnTallerPorUnidad(_db, hoy, ids);
+
+        var filas = new List<FilaProximo>();
+        foreach (var b in buses)
+        {
+            var kmActual = Math.Max(b.km_turnos ?? 0, b.km_vales ?? 0);
+            var resumen = await Calculos.ResumirPeriodo(_db, b.id_unidad, desde, hoy.AddDays(1));
+            // Sin km en la ventana (sin vales con referencia ni bitácora) no hay promedio: null, no 0.
+            var promedio = resumen.km_recorridos > 0 ? Calculos.PorDia(resumen.km_recorridos, diasContados) : null;
+
+            var p = preventivos.GetValueOrDefault(b.id_unidad);
+            int? kmDesde = null, faltan = null, diasEst = null;
+            decimal? avance = null;
+            string? observacion = null;
+            if (p is null)
+                observacion = "Sin mantenimiento preventivo registrado.";
+            else if (p.km > kmActual)
+                observacion = $"El km del último preventivo ({p.km}) es mayor que el km actual ({kmActual}). Revise los registros.";
+            else
+            {
+                kmDesde = kmActual - p.km;
+                faltan = IntervaloPreventivoKm - kmDesde;
+                avance = Math.Round(kmDesde.Value * 100m / IntervaloPreventivoKm, 1, MidpointRounding.AwayFromZero);
+                if (promedio is > 0)
+                    diasEst = (int)Math.Ceiling(faltan.Value / promedio.Value); // negativo = vencido hace ~N días
+            }
+
+            var estado = faltan is null ? null : faltan < 0 ? "vencido" : faltan <= UmbralProximoKm ? "proximo" : "al_dia";
+            filas.Add(new FilaProximo(b.id_unidad, b.placa, Reglas.NumeroBus(b.placa), taller.ContainsKey(b.id_unidad),
+                p?.id_mantenimiento, p?.fecha.ToString("yyyy-MM-dd"), p?.km, kmActual, kmDesde, faltan, avance,
+                promedio, diasEst, estado, observacion));
+        }
+
+        return Ok(new
+        {
+            intervalo_km = IntervaloPreventivoKm,
+            umbral_proximo_km = UmbralProximoKm,
+            promedio = new
+            {
+                desde = desde.ToString("yyyy-MM-dd"),
+                hasta = hoy.ToString("yyyy-MM-dd"),
+                dias = habiles ? "habiles" : "calendario",
+                dias_contados = diasContados
+            },
+            // Primero lo más urgente (menos km faltantes); al final los que no se pueden calcular.
+            buses = filas.OrderBy(f => f.km_faltantes is null).ThenBy(f => f.km_faltantes).ThenBy(f => f.placa)
+        });
+    }
+
+    private record FilaProximo(int id_unidad, string placa, string? numero_bus, bool en_taller,
+        int? id_ultimo_preventivo, string? fecha_ultimo_preventivo, int? km_ultimo_preventivo, int km_actual,
+        int? km_desde_preventivo, int? km_faltantes, decimal? porcentaje_avance, decimal? promedio_diario,
+        int? dias_estimados, string? estado, string? observacion);
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
