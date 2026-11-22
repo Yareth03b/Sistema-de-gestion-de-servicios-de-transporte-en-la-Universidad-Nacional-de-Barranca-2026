@@ -1,5 +1,5 @@
-import { api } from '../api.js';
-import { prepararCampos, errorCampo, showToast } from '../utils.js';
+import { api } from '../api.js?v=3';
+import { prepararCampos, errorCampo, showToast } from '../utils.js?v=3';
 
 const SESSION_KEY = 'unab_transporte_session';
 

@@ -1,5 +1,5 @@
-import { api } from '../api.js';
-import { mesActual, opcionesPeriodo, limitarTabla, mostrarErrorFormulario, formatNumber, openModal, showToast, escapeHtml } from '../utils.js';
+import { api } from '../api.js?v=3';
+import { mesActual, opcionesPeriodo, limitarTabla, mostrarErrorFormulario, formatNumber, openModal, showToast, escapeHtml } from '../utils.js?v=3';
 
 export async function renderRutas(container, searchQuery = '') {
   const [{ rutas, areas }, vales] = await Promise.all([api.getRutasYCostos(), api.getAbastecimientos()]);
