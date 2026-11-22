@@ -403,5 +403,6 @@
 .resumen-totales { margin-block: var(--space-4); }
 .unidad-card { display: grid; align-content: start; gap: var(--space-3); }
 .unidad-card .card-header { flex-wrap: wrap; margin-bottom: 0; }
+:has(> #back-unidades) { flex-wrap: wrap; }
 .acciones-unidad, .etiquetas-documentos { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .etiquetas-documentos { margin-top: var(--space-2); }
