@@ -17,26 +17,41 @@ public class EstimacionController : ControllerBase
     /// <summary>
     /// distancia_km = distancia total del viaje (ida y vuelta), tal como la envía la web.
     /// costo_estimado se recalcula en el servidor; el valor enviado se ignora.
+    /// id_solicitud (opcional): solicitud de viaje que se está estimando.
     /// </summary>
     public record EstimacionDto(int id_unidad, DateTime fecha, string destino, int distancia_km,
-        decimal rendimiento_promedio, decimal precio_galon, decimal? costo_estimado = null);
+        decimal rendimiento_promedio, decimal precio_galon, decimal? costo_estimado = null, int? id_solicitud = null);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
         var list = await _db.EstimacionesViaje.AsNoTracking()
             .OrderByDescending(e => e.fecha).ThenByDescending(e => e.id_estimacion)
+            .Select(e => new
+            {
+                e,
+                solicitud = _db.SolicitudesViaje.Where(s => s.id_solicitud == e.id_solicitud)
+                    .Select(s => new
+                    {
+                        s.codigo,
+                        area_nombre = _db.Areas.Where(a => a.id_area == s.id_area).Select(a => a.nombre).FirstOrDefault()
+                    })
+                    .FirstOrDefault()
+            })
             .ToListAsync();
-        return Ok(list.Select(e => new
+        return Ok(list.Select(x => new
         {
-            e.id_estimacion,
-            e.id_unidad,
-            fecha = e.fecha.ToString("yyyy-MM-dd"),
-            e.destino,
-            e.distancia_km,
-            e.rendimiento_promedio,
-            e.precio_galon,
-            e.costo_estimado
+            x.e.id_estimacion,
+            x.e.id_unidad,
+            fecha = x.e.fecha.ToString("yyyy-MM-dd"),
+            x.e.destino,
+            x.e.distancia_km,
+            x.e.rendimiento_promedio,
+            x.e.precio_galon,
+            x.e.costo_estimado,
+            x.e.id_solicitud,
+            codigo_solicitud = x.solicitud?.codigo,
+            area_nombre = x.solicitud?.area_nombre
         }));
     }
 
@@ -58,9 +73,20 @@ public class EstimacionController : ControllerBase
         var costo = Math.Round(dto.distancia_km / rendimiento * precio, 2, MidpointRounding.AwayFromZero);
         if (costo > 99_999_999.99m) throw new ReglaException("El costo estimado es demasiado grande.");
 
+        // id_solicitud opcional (0 o null = sin solicitud). Si la solicitud estaba «Pendiente», pasa a «Estimada»
+        // en el mismo SaveChanges que la estimación (una sola transacción).
+        SolicitudViaje? solicitud = null;
+        if (dto.id_solicitud is > 0)
+        {
+            solicitud = await _db.SolicitudesViaje.FirstOrDefaultAsync(s => s.id_solicitud == dto.id_solicitud)
+                        ?? throw new ReglaException($"La solicitud {dto.id_solicitud} no existe.");
+            if (solicitud.estado == Reglas.EstadosSolicitud[0]) solicitud.estado = "Estimada";
+        }
+
         var e = new EstimacionViaje
         {
             id_unidad = dto.id_unidad,
+            id_solicitud = solicitud?.id_solicitud,
             fecha = dto.fecha.Date,
             destino = Reglas.Requerido(dto.destino, "destino", 100),
             distancia_km = dto.distancia_km,
