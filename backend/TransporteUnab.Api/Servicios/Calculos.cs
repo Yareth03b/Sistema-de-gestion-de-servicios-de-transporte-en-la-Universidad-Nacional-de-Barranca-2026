@@ -14,7 +14,7 @@ public static class Calculos
     public record ValeCalculado(int? km_consumidos, decimal? rendimiento);
 
     public record ResumenPeriodo(int km_recorridos, decimal galones, decimal? rendimiento, int km_acumulado,
-        int? km_consumidos);
+        int? km_consumidos, decimal galones_rendimiento);
 
     /// <summary>
     /// Km consumidos (vale) = km_actual − km_actual del vale anterior de la misma unidad
@@ -51,40 +51,41 @@ public static class Calculos
         => ((short)fecha.Year, (byte)((fecha.Month - 1) / 3 + 1));
 
     /// <summary>
-    /// Resumen de una unidad en un periodo [inicio, fin):
-    /// rendimiento = (km_actual del último vale del periodo − km_actual del último vale ANTERIOR al inicio)
-    ///               ÷ galones del periodo. Sin vale anterior o sin galones → null. No se usa AVG.
-    /// km_recorridos = esos km consumidos; si no se pueden calcular (sin vale anterior), los km de la
-    /// bitácora del periodo (solo buses) o 0. km_acumulado = mayor km registrado hasta el fin del periodo.
+    /// Resumen de una unidad en un periodo [inicio, fin), con la MISMA regla que el dashboard (rendimientoFlota):
+    /// km_consumidos = Σ km consumidos de los vales del periodo que tienen vale anterior (el anterior puede ser de
+    /// antes del periodo o del propio periodo). rendimiento = ese km ÷ galones de esos mismos vales.
+    /// Si la unidad tiene un vale antes del inicio, equivale a (último vale del periodo − último vale anterior)
+    /// ÷ galones del periodo. El primer vale de una unidad no tiene referencia de km: sus galones no entran en el
+    /// rendimiento (galones_rendimiento), pero sí en «galones». Sin vales con referencia → null. No se usa AVG.
+    /// km_recorridos = km_consumidos; si es null, los km de la bitácora del periodo (solo buses) o 0.
+    /// km_acumulado = mayor km registrado hasta el fin del periodo.
     /// </summary>
     public static async Task<ResumenPeriodo> ResumirPeriodo(TransporteDbContext db, int idUnidad, DateTime inicio, DateTime fin)
     {
-        var ultimoDelPeriodo = await db.Abastecimientos
-            .Where(a => a.id_unidad == idUnidad && a.fecha >= inicio && a.fecha < fin)
-            .OrderByDescending(a => a.fecha).ThenByDescending(a => a.km_actual)
-            .Select(a => (int?)a.km_actual).FirstOrDefaultAsync();
-        var ultimoAnterior = await db.Abastecimientos
-            .Where(a => a.id_unidad == idUnidad && a.fecha < inicio)
-            .OrderByDescending(a => a.fecha).ThenByDescending(a => a.km_actual)
-            .Select(a => (int?)a.km_actual).FirstOrDefaultAsync();
-        var galones = await db.Abastecimientos
-            .Where(a => a.id_unidad == idUnidad && a.fecha >= inicio && a.fecha < fin)
-            .SumAsync(a => (decimal?)a.galones) ?? 0m;
+        // Historial de vales hasta el fin del periodo: el km consumido de cada vale depende del vale anterior.
+        var vales = await db.Abastecimientos.AsNoTracking()
+            .Where(a => a.id_unidad == idUnidad && a.fecha < fin)
+            .ToListAsync();
+        var calculo = PorVale(vales);
+        var delPeriodo = vales.Where(a => a.fecha >= inicio).ToList();
+        var conReferencia = delPeriodo.Where(a => calculo[a.id_abastecimiento].km_consumidos is not null).ToList();
 
-        int? kmConsumidos = ultimoDelPeriodo is int u && ultimoAnterior is int p ? u - p : null;
+        var galones = delPeriodo.Sum(a => a.galones);
+        int? kmConsumidos = conReferencia.Count > 0 ? conReferencia.Sum(a => calculo[a.id_abastecimiento].km_consumidos!.Value) : null;
+        var galonesRendimiento = conReferencia.Sum(a => a.galones);
 
         var kmBitacora = await db.BitacoraTurnos
             .Where(t => t.id_unidad == idUnidad && t.fecha >= inicio && t.fecha < fin)
             .SumAsync(t => (int?)(t.km_final - t.km_inicial)) ?? 0;
 
         var kmAcumulado = Math.Max(
-            await db.Abastecimientos.Where(a => a.id_unidad == idUnidad && a.fecha < fin).MaxAsync(a => (int?)a.km_actual) ?? 0,
+            vales.Count > 0 ? vales.Max(a => a.km_actual) : 0,
             await db.BitacoraTurnos.Where(t => t.id_unidad == idUnidad && t.fecha < fin).MaxAsync(t => (int?)t.km_final) ?? 0);
 
-        var rendimiento = Dividir(kmConsumidos, galones);
+        var rendimiento = Dividir(kmConsumidos, galonesRendimiento);
         if (rendimiento is > 999_999.99m) rendimiento = null; // no cabe en DECIMAL(8,2): dato inválido
 
-        return new ResumenPeriodo(kmConsumidos ?? kmBitacora, galones, rendimiento, kmAcumulado, kmConsumidos);
+        return new ResumenPeriodo(kmConsumidos ?? kmBitacora, galones, rendimiento, kmAcumulado, kmConsumidos, galonesRendimiento);
     }
 
     /// <summary>
@@ -141,6 +142,29 @@ public static class Calculos
         if (cierres.Count > 0) await db.SaveChangesAsync();
         return cierres.Select(c => $"T{c.trimestre}-{c.anio}").ToList();
     }
+
+    /// <summary>Parámetro ?dias de los reportes: "calendario" (por defecto) o "habiles".</summary>
+    public static bool EsDiasHabiles(string? dias) => (dias ?? "calendario").Trim().ToLowerInvariant() switch
+    {
+        "calendario" or "" => false,
+        "habiles" or "hábiles" => true,
+        _ => throw new ReglaException("El parámetro 'dias' debe ser 'calendario' o 'habiles'.")
+    };
+
+    /// <summary>Días entre inicio y fin (inclusive). Hábiles = lunes a viernes (no hay tabla de feriados).</summary>
+    public static int ContarDias(DateTime inicio, DateTime fin, bool habiles)
+    {
+        if (fin < inicio) return 0;
+        if (!habiles) return (fin - inicio).Days + 1;
+        var n = 0;
+        for (var d = inicio; d <= fin; d = d.AddDays(1))
+            if (d.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday) n++;
+        return n;
+    }
+
+    /// <summary>km ÷ días redondeado a 2 decimales; null si no hay días (sin división entre cero).</summary>
+    public static decimal? PorDia(int km, int dias)
+        => dias > 0 ? Math.Round((decimal)km / dias, 2, MidpointRounding.AwayFromZero) : null;
 
     /// <summary>Hoy en Perú; usado para la fecha de cierre.</summary>
     public static DateTime Hoy => HoraPeru.Hoy;
