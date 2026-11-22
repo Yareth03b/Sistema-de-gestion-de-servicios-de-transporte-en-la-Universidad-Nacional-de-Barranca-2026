@@ -2,10 +2,20 @@
    Componentes Reutilizables — Tarjetas, Tablas, Botones, Inputs, Modales
    ========================================================================== */
 .card {
+  min-width: 0;
   background-color: var(--bg-surface);
   border-radius: var(--radius-lg);
   padding: var(--space-6);
   box-shadow: var(--shadow-card);
+}
+
+#view-container > .card + .card,
+.card + .tabs-bar {
+  margin-block-start: var(--space-5);
+}
+
+.card:has(> .data-table) {
+  overflow-x: auto;
 }
 
 .card-header {
@@ -311,6 +321,8 @@
 /* Tabs */
 .tabs-bar {
   display: inline-flex;
+  max-width: 100%;
+  flex-wrap: wrap;
   gap: var(--space-2);
   background-color: var(--bg-surface);
   padding: 4px;
