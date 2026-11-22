@@ -71,6 +71,57 @@ public class ConciliacionController : ControllerBase
         return Ok(reporte);
     }
 
+    /// <summary>
+    /// Detalle de un trimestre (panel 12, conciliación TRIMESTRAL, D1): por unidad, cantidad de vales,
+    /// números de vale y galones según los vales registrados, frente al total del grifo si ya se guardó.
+    /// </summary>
+    [HttpGet("detalle")]
+    public async Task<IActionResult> Detalle([FromQuery] short anio, [FromQuery] byte trimestre)
+    {
+        if (trimestre is < 1 or > 4) throw new ReglaException("El trimestre debe estar entre 1 y 4.");
+        if (anio < 2000 || anio > 2100) throw new ReglaException("El año no es válido.");
+        var (inicio, fin) = Calculos.RangoTrimestre(anio, trimestre);
+
+        var vales = await _db.Abastecimientos.AsNoTracking()
+            .Where(a => a.fecha >= inicio && a.fecha < fin)
+            .Join(_db.Unidades, a => a.id_unidad, u => u.id_unidad, (a, u) => new
+            {
+                a.id_unidad,
+                u.placa,
+                a.nro_vale,
+                a.fecha,
+                a.galones
+            })
+            .OrderBy(v => v.placa).ThenBy(v => v.fecha).ThenBy(v => v.nro_vale)
+            .ToListAsync();
+
+        var reporte = await _db.ReportesGrifo.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.anio == anio && r.trimestre == trimestre);
+        var sistema = vales.Sum(v => v.galones);
+
+        return Ok(new
+        {
+            anio,
+            trimestre,
+            desde = inicio.ToString("yyyy-MM-dd"),
+            hasta = fin.AddDays(-1).ToString("yyyy-MM-dd"),
+            reporte = reporte is null ? null : new { reporte.id_reporte, reporte.galones_total, reporte.observaciones },
+            galones_sistema = sistema,
+            cantidad_vales = vales.Count,
+            diferencia = reporte is null ? (decimal?)null : reporte.galones_total - sistema,
+            unidades = vales.GroupBy(v => new { v.id_unidad, v.placa }).Select(g => new
+            {
+                g.Key.id_unidad,
+                g.Key.placa,
+                numero_bus = Reglas.NumeroBus(g.Key.placa),
+                cantidad_vales = g.Count(),
+                nros_vale = g.Select(v => v.nro_vale).ToArray(),
+                galones = g.Sum(v => v.galones),
+                vales = g.Select(v => new { v.nro_vale, fecha = v.fecha.ToString("yyyy-MM-dd"), v.galones })
+            })
+        });
+    }
+
     private async Task<decimal> GalonesSistema(int anio, int trimestre)
     {
         var (inicio, fin) = Calculos.RangoTrimestre(anio, trimestre);
