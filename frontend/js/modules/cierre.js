@@ -1,6 +1,6 @@
-import { api } from '../api.js?v=5';
-import { CONFIG } from '../config.js?v=5';
-import { formatDateES, formatSpaceInt, formatNumber, tablaDatos, openModal, showToast } from '../utils.js?v=5';
+import { api } from '../api.js?v=6';
+import { CONFIG } from '../config.js?v=6';
+import { formatDateES, formatSpaceInt, formatNumber, tablaDatos, exportarCsv, openModal, showToast } from '../utils.js?v=6';
 
 export const trimestres = ['I', 'II', 'III', 'IV'];
 
@@ -31,10 +31,15 @@ export async function renderCierre(container) {
         ${tablaDatos(['Unidad', 'Km recorridos', 'Galones', 'Rendimiento (km/gal)', 'Km al cierre'], filas.map(u =>
           [u.placa, formatSpaceInt(u.km_recorridos), formatNumber(u.galones, 2), formatNumber(u.rendimiento, 2), formatSpaceInt(u.km_acumulado)]))}`
         : '<p>Sin cierre registrado para este trimestre.</p>'}
-      <div class="modal-actions"><button class="btn btn-primary" data-guardar ${desde > hoy ? 'disabled' : ''}>
+      <div class="modal-actions">${cierre ? '<button class="btn btn-outline" data-exportar>Exportar CSV</button>' : ''}<button class="btn btn-primary" data-guardar ${desde > hoy ? 'disabled' : ''}>
         ${cierre ? 'Actualizar cierre' : 'Cerrar trimestre'}</button></div></section>`;
     container.querySelector('[name=anio]').onchange = e => { anio = Number(e.target.value); paint(); };
     container.querySelector('[name=trimestre]').onchange = e => { trimestre = Number(e.target.value); paint(); };
+    if (cierre) container.querySelector('[data-exportar]').onclick = () => exportarCsv(`cierre-${anio}-T${trimestre}.csv`, [
+      ['Año', anio, 'Trimestre', trimestre, 'Cerrado el', formatDateES(cierre.fecha_cierre)],
+      ['Unidad', 'Km recorridos', 'Galones', 'Rendimiento (km/gal)', 'Km al cierre'],
+      ...filas.map(u => [u.placa, u.km_recorridos, u.galones, u.rendimiento, u.km_acumulado]),
+    ]);
     const boton = container.querySelector('[data-guardar]');
     const guardar = async (btn, close) => {
       btn.disabled = true;
