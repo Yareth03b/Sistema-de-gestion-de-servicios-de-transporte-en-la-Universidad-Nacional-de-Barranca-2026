@@ -5,7 +5,7 @@ const SESSION_KEY = 'unab_transporte_session';
 
 export function getSession() {
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
+    const raw = sessionStorage.getItem(SESSION_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -13,7 +13,7 @@ export function getSession() {
 }
 
 export function clearSession() {
-  localStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SESSION_KEY);
 }
 
 export function initAuth(onLoginSuccess, onLogout) {
@@ -57,7 +57,7 @@ export function initAuth(onLoginSuccess, onLogout) {
     try {
       const session = await api.login(usuario, contrasenia);
       if (remember.checked) localStorage.setItem('unab_usuario_recordado', usuario);
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
       showToast(`Bienvenido, ${session.nombre_completo}`, 'success');
       onLoginSuccess(session);
     } catch (err) {

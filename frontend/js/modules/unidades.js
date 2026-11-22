@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js?v=6';
-import { getSession } from './auth.js?v=6';
+import { getSession } from './auth.js?v=7';
 import { api } from '../api.js?v=6';
 import { tablaDatos, formatHora, formatNumber, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=6';
 
