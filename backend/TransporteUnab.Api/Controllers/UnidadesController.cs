@@ -171,8 +171,19 @@ public class UnidadesController : ControllerBase
                 m.fecha_salida,
                 dias_en_taller = Taller.DiasEnTaller(m.fecha, m.fecha_salida)
             }),
-            documentos = await _db.DocumentosUnidad.AsNoTracking().Where(d => d.id_unidad == id)
-                .OrderBy(d => d.fecha_vencimiento).ToListAsync(),
+            documentos = (await _db.DocumentosUnidad.AsNoTracking().Where(d => d.id_unidad == id)
+                .OrderBy(d => d.fecha_vencimiento).ToListAsync())
+                .Select(d => new
+                {
+                    d.id_documento,
+                    d.id_unidad,
+                    d.tipo,
+                    d.numero,
+                    d.fecha_vencimiento,
+                    // «Vence en N días» (panel 15). Negativo = vencido hace N días.
+                    dias_para_vencer = (d.fecha_vencimiento.Date - HoraPeru.Hoy).Days,
+                    vencido = d.fecha_vencimiento.Date < HoraPeru.Hoy
+                }),
             incidentes = incidentes.Select(i =>
             {
                 // Decisión 13: el conductor no se guarda; es el del turno de esa unidad cuyo horario cubre la hora.
@@ -194,21 +205,36 @@ public class UnidadesController : ControllerBase
     [HttpPost("documentos")]
     public async Task<IActionResult> AddDocumento([FromBody] DocumentoDto dto)
     {
-        var unidad = await Reglas.UnidadExistente(_db, dto.id_unidad);
-        Reglas.SoloBuses(unidad, "Los documentos");
-        if (dto.fecha_vencimiento.Year < 2000)
-            throw new ReglaException("La fecha de vencimiento no es válida.");
-
-        var doc = new DocumentoUnidad
-        {
-            id_unidad = dto.id_unidad,
-            tipo = Reglas.Requerido(dto.tipo, "tipo", 20),
-            numero = Reglas.Requerido(dto.numero, "numero", 30),
-            fecha_vencimiento = dto.fecha_vencimiento.Date
-        };
+        var doc = new DocumentoUnidad { id_unidad = dto.id_unidad };
+        await ValidarDocumento(doc, dto);
         _db.DocumentosUnidad.Add(doc);
         await _db.SaveChangesAsync();
         return Ok(doc);
+    }
+
+    /// <summary>Edita un documento (SOAT, revisión técnica…). La unidad del documento no cambia.</summary>
+    [HttpPut("documentos/{id:int}")]
+    public async Task<IActionResult> UpdateDocumento(int id, [FromBody] DocumentoDto dto)
+    {
+        var doc = await _db.DocumentosUnidad.FindAsync(id)
+                  ?? throw ReglaException.NoEncontrado($"El documento {id} no existe.");
+        await ValidarDocumento(doc, dto with { id_unidad = doc.id_unidad });
+        await _db.SaveChangesAsync();
+        return Ok(doc);
+    }
+
+    private async Task ValidarDocumento(DocumentoUnidad doc, DocumentoDto dto)
+    {
+        var unidad = await Reglas.UnidadExistente(_db, dto.id_unidad);
+        Reglas.SoloBuses(unidad, "Los documentos");
+        var tipo = Reglas.Requerido(dto.tipo, "tipo", 20);
+        var numero = Reglas.Requerido(dto.numero, "numero", 30);
+        if (dto.fecha_vencimiento.Year is < 2000 or > 2100)
+            throw new ReglaException("La fecha de vencimiento no es válida.");
+
+        doc.tipo = tipo;
+        doc.numero = numero;
+        doc.fecha_vencimiento = dto.fecha_vencimiento.Date;
     }
 
     [HttpPost("incidentes")]
