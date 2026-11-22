@@ -1,9 +1,28 @@
-import { CONFIG } from '../config.js?v=4';
-import { api } from '../api.js?v=4';
-import { mostrarErrorFormulario, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=4';
+import { CONFIG } from '../config.js?v=5';
+import { api } from '../api.js?v=5';
+import { tablaDatos, mostrarErrorFormulario, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=5';
+
+// Solo al faltar el endpoint: calcula las distancias con el último preventivo por fecha.
+export function proximosPorKilometraje(unidades, mants) {
+  const ultimos = new Map();
+  for (const m of mants) {
+    const previo = ultimos.get(m.id_unidad);
+    if (m.tipo === 'Preventivo' && (!previo || m.fecha > previo.fecha || (m.fecha === previo.fecha && m.km > previo.km))) {
+      ultimos.set(m.id_unidad, m);
+    }
+  }
+  return unidades.filter(u => u.activo && esBus(u)).map(u => {
+    const km = ultimos.get(u.id_unidad)?.km;
+    const avance = km != null && u.km_actual >= km ? u.km_actual - km : null;
+    return { id_unidad: u.id_unidad, placa: u.placa, km_actual: u.km_actual, km_ultimo_preventivo: km,
+      km_desde_preventivo: avance, km_faltantes: avance == null ? null : CONFIG.PREVENTIVE_INTERVAL_KM - avance,
+      dias_estimados: null };
+  });
+}
 
 export async function renderMantenimiento(container, searchQuery = '') {
-  const [mants, unidades] = await Promise.all([api.getMantenimientos(), api.getUnidades()]);
+  const [mants, unidades, previstos] = await Promise.all([api.getMantenimientos(), api.getUnidades(), api.getProximosMantenimientos()]);
+  const proximos = previstos ?? proximosPorKilometraje(unidades, mants);
   let filterTipo = 'all';
 
   const paint = () => {
@@ -18,6 +37,14 @@ export async function renderMantenimiento(container, searchQuery = '') {
 
     container.innerHTML = `
       <section class="card">
+        <h2 class="card-title">Próximos mantenimientos</h2>
+        <p class="card-meta">Se avisa cada 5 000 km desde el último mantenimiento preventivo.</p>
+        ${tablaDatos(['Bus', 'Último preventivo (km)', 'Km actual', 'Avance (km)', 'Faltan (km)', 'Días estimados'],
+          proximos.filter(p => p.placa.toLowerCase().includes(q)).map(p => [p.placa, formatSpaceInt(p.km_ultimo_preventivo),
+            formatSpaceInt(p.km_actual), formatSpaceInt(p.km_desde_preventivo), formatSpaceInt(p.km_faltantes), formatSpaceInt(p.dias_estimados)]))}
+      </section>
+      <section class="card">
+        <h2 class="card-title">Ingresos y salidas del taller</h2>
         <div class="filters-bar">
           <div class="field-group">
             <label class="field-label" for="mant-tipo">Tipo</label>

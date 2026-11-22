@@ -1,9 +1,15 @@
-import { CONFIG } from '../config.js?v=4';
-import { getSession } from './auth.js?v=4';
-import { api } from '../api.js?v=4';
-import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=4';
+import { CONFIG } from '../config.js?v=5';
+import { getSession } from './auth.js?v=5';
+import { api } from '../api.js?v=5';
+import { tablaDatos, formatHora, formatNumber, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=5';
 
-import { abrirSalida } from './mantenimiento.js?v=4';
+import { abrirSalida } from './mantenimiento.js?v=5';
+
+function vencimiento(doc) {
+  if (!doc || doc.dias_para_vencer == null) return 'Sin vencimiento registrado';
+  if (doc.vencido) return `Vencido hace ${Math.abs(doc.dias_para_vencer)} días`;
+  return doc.dias_para_vencer === 0 ? 'Vence hoy' : `Vence en ${doc.dias_para_vencer} días`;
+}
 
 function estadoUnidad(u) {
   return `<span class="pill ${u.activo && u.estado === 'Operativo' ? 'pill-success' : 'pill-info'}">${escapeHtml(u.estado || 'Sin estado')}</span>
@@ -118,7 +124,7 @@ export async function renderUnidades(container, searchQuery = '') {
         </div>
       </div>
 
-      <div class="dash-top-grid">
+      <div>
         <section class="card">
           <div class="card-header">
             <h2 class="card-title">Documentos de la unidad</h2>
@@ -130,14 +136,28 @@ export async function renderUnidades(container, searchQuery = '') {
                 <tr>
                   <td><strong>${escapeHtml(d.tipo)}</strong></td>
                   <td>${escapeHtml(d.numero)}</td>
-                  <td>${formatDateES(d.fecha_vencimiento)}</td>
+                  <td>${formatDateES(d.fecha_vencimiento)} · ${vencimiento(d)}</td>
                 </tr>
               `).join('') || `<tr><td colspan="3" style="color:var(--text-secondary);">Sin documentos registrados.</td></tr>`}
             </tbody>
           </table>
         </section>
 
-        <section class="card">
+        <nav class="tabs-bar" aria-label="Historial de la unidad">
+          ${['Turnos', 'Combustible', 'Mantenimientos', 'Incidentes'].map((nombre, i) =>
+            `<button class="tab-btn ${i === 0 ? 'active' : ''}" data-hist-tab="${nombre}" aria-pressed="${i === 0}">${nombre}</button>`).join('')}
+        </nav>
+        <section class="card" data-panel="Turnos">
+          ${tablaDatos(['Fecha', 'Salida', 'Llegada', 'Km inicial', 'Km final', 'Km recorridos'],
+            hist.turnos.map(t => [formatDateES(t.fecha), formatHora(t.hora_salida), formatHora(t.hora_llegada),
+              formatSpaceInt(t.km_inicial), formatSpaceInt(t.km_final), formatSpaceInt(t.km_recorridos)]), 'Sin turnos registrados.')}
+        </section>
+        <section class="card hidden" data-panel="Combustible">
+          ${tablaDatos(['Vale', 'Fecha', 'Km actual', 'Galones', 'Km consumidos', 'Rendimiento (km/gal)'],
+            hist.abastecimientos.map(v => [v.nro_vale, formatDateES(v.fecha), formatSpaceInt(v.km_actual),
+              formatNumber(v.galones, 2), formatSpaceInt(v.km_consumidos), formatNumber(v.rendimiento, 2)]), 'Sin vales registrados.')}
+        </section>
+        <section class="card hidden" data-panel="Incidentes">
           <div class="card-header">
             <h2 class="card-title">Incidentes registrados</h2>
           </div>
@@ -156,26 +176,35 @@ export async function renderUnidades(container, searchQuery = '') {
         </section>
       </div>
 
-      <section class="card">
+      <section class="card hidden" data-panel="Mantenimientos">
         <div class="card-header">
           <h2 class="card-title">Historial de mantenimientos</h2>
         </div>
         <table class="data-table">
-          <thead><tr><th>FECHA</th><th>TIPO</th><th class="num-right">KILOMETRAJE</th><th>DETALLE</th></tr></thead>
+          <thead><tr><th>FECHA</th><th>TIPO</th><th class="num-right">KILOMETRAJE</th><th>DETALLE</th><th>SALIDA</th><th>DÍAS EN TALLER</th></tr></thead>
           <tbody>
             ${hist.mantenimientos.map((m) => `
               <tr>
                 <td>${formatDateES(m.fecha)}</td>
                 <td><span class="pill ${m.tipo === 'Correctivo' ? 'pill-urgent' : 'pill-info'}">${escapeHtml(m.tipo)}</span></td>
                 <td class="num-right">${formatSpaceInt(m.km)} km</td>
-                <td>${escapeHtml(m.detalle || '-')}</td>
+                <td>${escapeHtml(m.detalle || '-')}</td><td>${m.fecha_salida ? formatDateES(m.fecha_salida) : 'En taller'}</td><td>${formatSpaceInt(m.dias_en_taller)}</td>
               </tr>
-            `).join('') || `<tr><td colspan="4" style="color:var(--text-secondary);">Sin mantenimientos.</td></tr>`}
+            `).join('') || `<tr><td colspan="6" style="color:var(--text-secondary);">Sin mantenimientos.</td></tr>`}
           </tbody>
         </table>
       </section>
     `;
 
+    container.querySelectorAll('[data-hist-tab]').forEach(btn => {
+      btn.onclick = () => {
+        container.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== btn.dataset.histTab));
+        container.querySelectorAll('[data-hist-tab]').forEach(b => {
+          b.classList.toggle('active', b === btn);
+          b.setAttribute('aria-pressed', String(b === btn));
+        });
+      };
+    });
     document.getElementById('back-unidades').addEventListener('click', () => container.dispatchEvent(new Event('actualizar-vista', { bubbles: true })));
     document.getElementById('btn-nuevo-inc').addEventListener('click', () => openIncidenteModal(idUnidad, null));
     document.getElementById('btn-nuevo-doc').addEventListener('click', () => openDocumentoModal(idUnidad));
