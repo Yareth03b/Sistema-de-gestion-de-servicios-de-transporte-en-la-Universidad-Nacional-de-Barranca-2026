@@ -1,4 +1,4 @@
-import { esBus, formatHora, formatSpaceInt } from './utils.js?v=6';
+import { esBus, formatHora, formatSpaceInt } from './utils.js?v=8';
 import { api } from './api.js?v=6';
 
 export function falloCampo(campo, message) {

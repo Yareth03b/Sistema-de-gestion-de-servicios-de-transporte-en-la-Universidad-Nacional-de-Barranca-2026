@@ -1,6 +1,6 @@
 import { api } from './api.js?v=6';
 import { CONFIG } from './config.js?v=6';
-import { formatDateES, showToast } from './utils.js?v=6';
+import { formatDateES, showToast } from './utils.js?v=8';
 import { initAuth, clearSession, getSession } from './modules/auth.js?v=7';
 import { renderDashboard } from './modules/dashboard.js?v=6';
 import { renderTurnos } from './modules/turnos.js?v=6';
