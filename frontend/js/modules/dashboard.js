@@ -1,16 +1,17 @@
-import { api } from '../api.js?v=3';
-import { CONFIG } from '../config.js';
+import { api } from '../api.js?v=4';
+import { CONFIG } from '../config.js?v=4';
 
-import { esBus, rendimientoPeriodo, rendimientoFlota, formatNumber, formatSpaceInt, formatDateES, escapeHtml } from '../utils.js?v=3';
+import { esBus, rendimientoPeriodo, rendimientoFlota, formatNumber, formatSpaceInt, formatDateES, escapeHtml } from '../utils.js?v=4';
 
 export async function renderDashboard(container, navigate) {
   let mantenimientoError = '';
-  const [unidades, todosTurnos, todosVales, listado, concil] = await Promise.all([
+  const [unidades, todosTurnos, todosVales, listado, concil, operatividad] = await Promise.all([
     api.getUnidades(),
     api.getTurnos(),
     api.getAbastecimientos(),
     api.getMantenimientos().catch(err => { mantenimientoError = err.message; return null; }),
     api.getConciliacion(),
+    api.getBusesOperativos(),
   ]);
   const historiales = await Promise.all(unidades.map(u => api.getUnidadHistorial(u.id_unidad)));
   const mants = listado ?? historiales.flatMap(h => h.mantenimientos);
@@ -23,7 +24,7 @@ export async function renderDashboard(container, navigate) {
   const galMes = abasts.reduce((s, a) => s + Number(a.galones), 0);
   const rendProm = rendimientoFlota(abasts);
   const buses = unidades.filter((u) => u.activo !== false && esBus(u));
-  const busesOperativosHoy = buses.filter((u) => (u.estado || '') === 'Operativo').length;
+
 
   // Alertas dinámicas de mantenimiento y documentos
   const alertas = [];
@@ -216,7 +217,7 @@ export async function renderDashboard(container, navigate) {
             </svg>
           </span>
         </div>
-        <div><span class="kpi-value">${busesOperativosHoy}</span>${buses.length ? `<span class="kpi-unit">/ ${buses.length}</span>` : ''}</div>
+        <div><span class="kpi-value">${operatividad.operativos}</span>${operatividad.total_buses ? `<span class="kpi-unit">/ ${operatividad.total_buses}</span>` : ''}</div>
       </article>
     </div>
 

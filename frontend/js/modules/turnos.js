@@ -1,7 +1,7 @@
-import { falloCampo, campoRegistro, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=3';
-import { CONFIG } from '../config.js';
-import { api } from '../api.js?v=3';
-import { mostrarErrorFormulario, errorCampo, formatHora, mesActual, opcionesPeriodo, limitarTabla, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=3';
+import { falloCampo, campoRegistro, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=4';
+import { CONFIG } from '../config.js?v=4';
+import { api } from '../api.js?v=4';
+import { mostrarErrorFormulario, errorCampo, formatHora, mesActual, opcionesPeriodo, limitarTabla, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=4';
 
 export async function renderTurnos(container, searchQuery = '') {
   const [turnos, unidades, conductores, rutas] = await Promise.all([
@@ -200,8 +200,9 @@ export async function renderTurnos(container, searchQuery = '') {
             if (payload.km_final <= payload.km_inicial) throw falloCampo('km_final', 'El km final debe superar el inicial.');
             if (payload.hora_llegada <= payload.hora_salida) throw falloCampo('hora_llegada', 'La llegada debe ser posterior a la salida.');
             if (!await confirmarPeriodo(payload.fecha, existing?.fecha)) return;
-            await api.saveTurno(payload, existing?.id_turno || null);
+            const resultado = await api.saveTurno(payload, existing?.id_turno || null);
             showToast(existing ? 'Turno actualizado.' : 'Turno registrado en bitácora.', 'success');
+            if (resultado.aviso) showToast(resultado.aviso, 'warning');
             close();
             container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
           } catch (err) {

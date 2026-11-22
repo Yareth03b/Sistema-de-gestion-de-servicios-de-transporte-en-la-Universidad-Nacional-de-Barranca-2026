@@ -1,7 +1,7 @@
-import { falloCampo, campoRegistro, errorKilometraje, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=3';
-import { CONFIG } from '../config.js';
-import { api } from '../api.js?v=3';
-import { mostrarErrorFormulario, errorCampo, mesActual, opcionesPeriodo, limitarTabla, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=3';
+import { falloCampo, campoRegistro, errorKilometraje, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=4';
+import { CONFIG } from '../config.js?v=4';
+import { api } from '../api.js?v=4';
+import { mostrarErrorFormulario, errorCampo, mesActual, opcionesPeriodo, limitarTabla, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=4';
 
 export async function renderCombustible(container, searchQuery = '') {
   const [abasts, unidades, conductores, areasData] = await Promise.all([
