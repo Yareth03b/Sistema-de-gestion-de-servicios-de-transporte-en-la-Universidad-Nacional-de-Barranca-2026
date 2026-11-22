@@ -252,22 +252,26 @@ Parámetros (todos opcionales):
   "totales": { "km_periodo": 650, "galones": 75.00, "vales": 3, "rendimiento_flota": 13.33, "promedio_diario": 30.95 },
   "unidades": [
     { "id_unidad": 1, "placa": "EGT-801", "numero_bus": "801", "tipo": "Bus", "activo": true,
-      "km_periodo": 600, "km_fuente": "vales", "galones": 45.00, "vales": 2,
+      "km_periodo": 600, "km_fuente": "vales", "galones": 45.00, "galones_rendimiento": 45.00, "vales": 2,
       "rendimiento": 13.33, "km_acumulado": 10600, "promedio_diario": 28.57 }
   ]
 }
 ```
 
-Cómo se calcula cada campo (igual que el cierre trimestral, para que el reporte y el cierre den las mismas cifras):
+Cómo se calcula cada campo (igual que el cierre trimestral y el dashboard, para que den las mismas cifras;
+la regla se corrigió el 22/11/2026, ver la sección 10):
 
-- `km_periodo`: `km_actual` del último vale del periodo − `km_actual` del último vale **anterior** al inicio
-  (`km_fuente: "vales"`). Si la unidad no tiene vale anterior, se usan los km de la bitácora del periodo
-  (`km_fuente: "bitacora"`). Si tampoco hay bitácora, `0` (`km_fuente: null`).
-- `galones`: la suma de los vales del periodo.
-- `rendimiento`: `km_periodo ÷ galones` del periodo, solo cuando `km_fuente` es `"vales"`. **Nunca es un promedio
-  de rendimientos.** Es `null` si no hay vale anterior o si los galones son 0 (no se divide entre cero).
-- `rendimiento_flota`: Σ km ÷ Σ galones de las unidades que tienen `rendimiento` (las demás se omiten). Es el mismo
-  criterio que `rendimientoFlota()` del dashboard.
+- `km_periodo`: la suma de los `km_consumidos` (los de `GET /combustible`) de los vales del periodo que tienen vale
+  anterior (`km_fuente: "vales"`). Si la unidad tiene un vale antes del inicio, equivale a `km_actual` del último vale
+  del periodo − `km_actual` del último vale anterior al inicio. Si ningún vale del periodo tiene referencia, se usan
+  los km de la bitácora del periodo (`km_fuente: "bitacora"`). Si tampoco hay bitácora, `0` (`km_fuente: null`).
+- `galones`: la suma de **todos** los vales del periodo (lo cargado).
+- `galones_rendimiento` *(nuevo)*: los galones de los vales que tienen vale anterior. Solo es menor que `galones`
+  cuando el primer vale de la unidad cae en el periodo: ese vale no tiene km de referencia.
+- `rendimiento`: `km_periodo ÷ galones_rendimiento`, solo cuando `km_fuente` es `"vales"`. **Nunca es un promedio
+  de rendimientos.** Es `null` si ningún vale tiene referencia o si los galones son 0 (no se divide entre cero).
+- `rendimiento_flota`: Σ km ÷ Σ `galones_rendimiento` de las unidades que tienen `rendimiento` (las demás se omiten).
+  Es exactamente `rendimientoFlota()` del dashboard.
 - `km_acumulado`: el mayor km registrado (vales o bitácora) hasta el fin del periodo.
 - `promedio_diario`: `km_periodo ÷ dias_contados`, redondeado a 2 decimales. Es `null` si `dias_contados` es 0.
 
@@ -332,3 +336,106 @@ y `vencido` (bool), para mostrar «Vence en 12 días».
 - **D2, «Motivo» del vale:** se escribe dentro de `observaciones` (máx. 300 caracteres). No hay campo nuevo.
 - **D3, foto del mantenimiento:** es un enlace de texto en el campo `foto`, que ya existía (máx. 260 caracteres).
 - No se cambió el esquema de la BD. Los campos existentes conservan su nombre y su formato, salvo lo indicado en 7.1.
+
+## 9. Próximos mantenimientos con días estimados (rama `feat/proximos-mantenimientos`, HU-09)
+
+### 9.1 `GET /api/mantenimiento/proximos` (nuevo, panel 17)
+
+Devuelve una fila por **bus activo**. Las camionetas, las minivans y las unidades dadas de baja no aparecen.
+Los buses que están en taller **sí aparecen**, marcados con `en_taller: true`; su estado no cambia.
+
+| Parámetro | Valor | Por defecto |
+|---|---|---|
+| `dias` | `calendario` o `habiles` (lunes a viernes, sin feriados). Es el mismo criterio que `/api/reportes/por-unidad` | `calendario` |
+| `ventana_dias` | Días hacia atrás, contando hoy, con los que se calcula el promedio diario: de 7 a 365 | `30` |
+
+```json
+{
+  "intervalo_km": 5000,
+  "umbral_proximo_km": 500,
+  "promedio": { "desde": "2026-10-24", "hasta": "2026-11-22", "dias": "calendario", "dias_contados": 30 },
+  "buses": [
+    { "id_unidad": 2, "placa": "EGT-802", "numero_bus": "802", "en_taller": false,
+      "id_ultimo_preventivo": 9, "fecha_ultimo_preventivo": "2026-08-14", "km_ultimo_preventivo": 1000,
+      "km_actual": 6300, "km_desde_preventivo": 5300, "km_faltantes": -300, "porcentaje_avance": 106.0,
+      "promedio_diario": 43.33, "dias_estimados": -6, "estado": "vencido", "observacion": null },
+    { "id_unidad": 1, "placa": "EGT-801", "numero_bus": "801", "en_taller": false,
+      "id_ultimo_preventivo": 4, "fecha_ultimo_preventivo": "2026-10-13", "km_ultimo_preventivo": 10000,
+      "km_actual": 12400, "km_desde_preventivo": 2400, "km_faltantes": 2600, "porcentaje_avance": 48.0,
+      "promedio_diario": 30.00, "dias_estimados": 87, "estado": "al_dia", "observacion": null },
+    { "id_unidad": 3, "placa": "EGT-803", "numero_bus": "803", "en_taller": false,
+      "id_ultimo_preventivo": null, "fecha_ultimo_preventivo": null, "km_ultimo_preventivo": null,
+      "km_actual": 3200, "km_desde_preventivo": null, "km_faltantes": null, "porcentaje_avance": null,
+      "promedio_diario": 40.00, "dias_estimados": null, "estado": null,
+      "observacion": "Sin mantenimiento preventivo registrado." }
+  ]
+}
+```
+
+### 9.2 Cómo se calcula cada campo
+
+- **Último preventivo:** solo el tipo `Preventivo` reinicia el conteo (S-02). Los correctivos y predictivos no cuentan.
+  Se toma el de fecha más reciente; si hay varios en la misma fecha, el de mayor km.
+- `km_actual`: el mismo que `GET /api/unidades`, es decir, el mayor km registrado entre la bitácora y los vales.
+- `km_desde_preventivo` = `km_actual − km_ultimo_preventivo`.
+- `km_faltantes` = `5000 − km_desde_preventivo`. **Es negativo si el bus ya se pasó.**
+- `porcentaje_avance` = `km_desde_preventivo ÷ 5000 × 100`, con 1 decimal. No tiene tope: puede superar 100.
+  La barra de la web debe limitarlo a 100.
+- `promedio_diario`: los km de la ventana ÷ `promedio.dias_contados`. Los km se calculan con la misma fórmula que
+  `km_periodo` de `/api/reportes/por-unidad`, así que coincide con
+  `/api/reportes/por-unidad?desde={promedio.desde}&hasta={promedio.hasta}&dias=...`.
+  Es **`null` si el bus no tiene km en la ventana**.
+- `dias_estimados` = `km_faltantes ÷ promedio_diario`, redondeado hacia arriba a días enteros. Si es negativo, el
+  preventivo venció hace unos N días. Con `dias=habiles` son días hábiles.
+- `estado`: `vencido` si `km_faltantes < 0`, `proximo` si `km_faltantes ≤ 500` y `al_dia` en el resto de los casos.
+  Son los mismos umbrales que los avisos del dashboard.
+- **Orden:** primero lo más urgente (menos `km_faltantes`) y al final las filas sin cálculo.
+
+**Valores `null`, nunca `0` ni error:**
+
+| Caso | Campos en `null` | `observacion` |
+|---|---|---|
+| Sin mantenimiento preventivo | `km_ultimo_preventivo`, `km_desde_preventivo`, `km_faltantes`, `porcentaje_avance`, `dias_estimados`, `estado` | «Sin mantenimiento preventivo registrado.» |
+| El km del preventivo es mayor que el `km_actual` (datos inconsistentes) | los mismos, salvo los del preventivo, que sí se muestran | «El km del último preventivo (…) es mayor que el km actual (…). Revise los registros.» |
+| Sin km en la ventana | `promedio_diario` y `dias_estimados` | `null` (los km sí se calculan) |
+
+`dias_estimados` nunca divide entre cero: si `promedio_diario` es `null` o `0`, devuelve `null`.
+
+**Errores:** 400 si `dias` no es `calendario` ni `habiles`, o si `ventana_dias` no está entre 7 y 365.
+
+**Web (`mantenimiento.js` y `dashboard.js`):** la tabla «Próximos mantenimientos» puede usar este endpoint en lugar de
+calcular en el navegador. El dashboard hoy usa el preventivo de **mayor km**, no el más reciente, y fija en 0 los km
+negativos.
+
+### 9.3 Con los datos actuales de producción (22/11/2026)
+
+- **ABC-001:** el preventivo es de 12 500 km, pero su `km_actual` es 1 180, así que aparece con `observacion` de
+  datos inconsistentes. Hoy el dashboard muestra «Faltan 5 000 km», porque fija en 0 los km negativos.
+- **ABC-003 y ABC-005:** no tienen preventivo, así que aparecen con «Sin mantenimiento preventivo registrado».
+
+## 10. Corrección: el reporte, el cierre y el dashboard ahora dan las mismas cifras (22/11/2026)
+
+**El problema.** `GET /api/reportes/por-unidad` y el cierre trimestral calculaban el rendimiento como
+`(último vale del periodo − último vale ANTERIOR al inicio) ÷ galones del periodo`, y daban `null` si la unidad no
+tenía un vale anterior al periodo. El dashboard (`rendimientoPeriodo` y `rendimientoFlota` de `utils.js`) suma los
+`km_consumidos` de los vales que tienen vale anterior, sin importar si ese vale anterior cae dentro o fuera del
+periodo. Las dos reglas solo coinciden cuando la unidad tiene un vale antes del periodo.
+
+Con los datos de producción:
+
+| | ABC-001 | ABC-003 | Flota |
+|---|---|---|---|
+| Dashboard (noviembre) | 12,0 | 275,4 | 214,6 |
+| `por-unidad?mes=2026-11`, antes | `null` (500 km de bitácora) | 275,4 | 275,4 |
+| `por-unidad` del T4, antes (= lo que guardaría el cierre) | `null` | `null` (0 km) | `null` |
+| `por-unidad` y cierre, **ahora** (noviembre y T4) | **12** (180 km) | **275,4** (13 770 km) | **214,62** |
+
+**La corrección.** La API usa ahora la regla del dashboard en `Calculos.ResumirPeriodo`, que comparten el reporte
+por unidad, el cierre trimestral y `GET /api/mantenimiento/proximos`. Si la unidad tiene un vale antes del periodo,
+el resultado es idéntico al anterior. Si no lo tiene, ya no se pierden los km y el rendimiento de los vales que sí
+tienen referencia dentro del periodo. Detalle en 8.1, con el campo nuevo `galones_rendimiento`.
+
+- No hay cierres guardados (`GET /api/reportes/trimestral` devuelve `[]`), así que no cambia ningún dato.
+- El cierre de T4, calculado en memoria con los datos reales y sin guardar, coincide en cada unidad con
+  `por-unidad?desde=2026-10-01&hasta=2026-12-31`.
+- Diferencia de presentación: la API redondea a 2 decimales y el dashboard muestra 1 (214,62 frente a 214,6).
