@@ -1,5 +1,5 @@
-import { api } from '../api.js?v=3';
-import { mostrarErrorFormulario, mesActual, opcionesPeriodo, limitarTabla, rendimientoPeriodo, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=3';
+import { api } from '../api.js?v=4';
+import { mostrarErrorFormulario, mesActual, opcionesPeriodo, limitarTabla, rendimientoPeriodo, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=4';
 
 export async function renderReportes(container) {
   let [cierres, unidades, turnos, abasts] = await Promise.all([

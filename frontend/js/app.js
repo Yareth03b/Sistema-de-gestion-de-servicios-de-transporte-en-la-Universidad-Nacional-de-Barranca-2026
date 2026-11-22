@@ -1,24 +1,24 @@
-import { api } from './api.js?v=3';
-import { CONFIG } from './config.js';
-import { formatDateES, showToast } from './utils.js?v=3';
-import { initAuth, clearSession } from './modules/auth.js?v=3';
-import { renderDashboard } from './modules/dashboard.js?v=3';
-import { renderTurnos } from './modules/turnos.js?v=3';
-import { renderCombustible } from './modules/combustible.js?v=3';
-import { renderUnidades } from './modules/unidades.js?v=3';
-import { renderMantenimiento } from './modules/mantenimiento.js?v=3';
-import { renderConductores } from './modules/conductores.js?v=3';
-import { renderRutas } from './modules/rutas.js?v=3';
-import { renderReportes } from './modules/reportes.js?v=3';
-import { renderConciliacion } from './modules/conciliacion.js?v=3';
-import { renderEstimacion } from './modules/estimacion.js?v=3';
+import { api } from './api.js?v=4';
+import { CONFIG } from './config.js?v=4';
+import { formatDateES, showToast } from './utils.js?v=4';
+import { initAuth, clearSession } from './modules/auth.js?v=4';
+import { renderDashboard } from './modules/dashboard.js?v=4';
+import { renderTurnos } from './modules/turnos.js?v=4';
+import { renderCombustible } from './modules/combustible.js?v=4';
+import { renderUnidades } from './modules/unidades.js?v=4';
+import { renderMantenimiento } from './modules/mantenimiento.js?v=4';
+import { renderConductores } from './modules/conductores.js?v=4';
+import { renderRutas } from './modules/rutas.js?v=4';
+import { renderReportes } from './modules/reportes.js?v=4';
+import { renderConciliacion } from './modules/conciliacion.js?v=4';
+import { renderEstimacion } from './modules/estimacion.js?v=4';
 
 const ROUTES = {
   dashboard: { title: 'Inicio', subtitle: () => `Datos al ${formatDateES(CONFIG.REFERENCE_DATE)}`, cta: null, render: renderDashboard },
   turnos: { title: 'Bitácora de turnos', subtitle: '', cta: '+ Nuevo turno', render: renderTurnos },
   combustible: { title: 'Combustible', subtitle: '', cta: '+ Nuevo vale', render: renderCombustible },
   unidades: { title: 'Unidades', subtitle: '', cta: '+ Nueva unidad', render: renderUnidades },
-  mantenimiento: { title: 'Mantenimiento', subtitle: '', cta: '+ Nuevo mantenimiento', render: renderMantenimiento },
+  mantenimiento: { title: 'Mantenimiento', subtitle: '', cta: 'Ingreso al taller', render: renderMantenimiento },
   conductores: { title: 'Conductores', subtitle: '', cta: '+ Nuevo conductor', render: renderConductores },
   rutas: { title: 'Rutas', subtitle: '', cta: '+ Nueva ruta', render: renderRutas },
   reportes: { title: 'Reportes', subtitle: '', cta: null, render: renderReportes },

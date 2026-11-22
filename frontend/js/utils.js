@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js';
+import { CONFIG } from './config.js?v=4';
 
 export function formatNumber(n, decimals = 0) {
   if (n == null || !Number.isFinite(Number(n))) return '—';

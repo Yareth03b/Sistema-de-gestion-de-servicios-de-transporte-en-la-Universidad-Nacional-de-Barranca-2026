@@ -1,7 +1,15 @@
-import { CONFIG } from '../config.js';
-import { getSession } from './auth.js?v=3';
-import { api } from '../api.js?v=3';
-import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=3';
+import { CONFIG } from '../config.js?v=4';
+import { getSession } from './auth.js?v=4';
+import { api } from '../api.js?v=4';
+import { esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=4';
+
+import { abrirSalida } from './mantenimiento.js?v=4';
+
+function estadoUnidad(u) {
+  return `<span class="pill ${u.activo && u.estado === 'Operativo' ? 'pill-success' : 'pill-info'}">${escapeHtml(u.estado || 'Sin estado')}</span>
+    ${u.activo ? '' : '<strong>De baja</strong>'}
+    ${u.en_taller ? `<span>Días en taller: ${formatSpaceInt(u.dias_en_taller)}</span>` : ''}`;
+}
 
 export async function renderUnidades(container, searchQuery = '') {
   const unidades = await api.getUnidades(true);
@@ -39,8 +47,9 @@ export async function renderUnidades(container, searchQuery = '') {
                   <td>${escapeHtml(u.codigo_patrimonial || '-')}</td>
                   <td class="num-right">${u.capacidad || '-'}</td>
                   <td class="num-right">${formatSpaceInt(u.km_actual || 0)} km</td>
-                  <td><span class="pill ${u.estado === 'Operativo' ? 'pill-success' : 'pill-info'}">${escapeHtml(u.activo ? u.estado || 'Sin estado' : 'De baja')}</span></td>
+                  <td>${estadoUnidad(u)}</td>
                   <td style="white-space:nowrap;">
+                    ${u.en_taller ? `<button class="btn-link" data-salida-unidad="${u.id_unidad}">Salió del taller</button>` : ''}
                     <button class="btn-link" data-hist-unidad="${u.id_unidad}">Ver historial</button>
                     <button class="btn-link" data-edit-unidad="${u.id_unidad}">Editar</button>
                   ${u.activo && 'numero_bus' in u ? `<button type="button" class="btn-link" data-baja="${u.id_unidad}">Dar de baja</button>` : ''}
@@ -56,6 +65,10 @@ export async function renderUnidades(container, searchQuery = '') {
       </section>
     `;
 
+    container.querySelectorAll('[data-salida-unidad]').forEach(btn => {
+      const u = unidades.find(u => u.id_unidad === Number(btn.dataset.salidaUnidad));
+      btn.onclick = () => abrirSalida({ id_mantenimiento: u.id_mantenimiento_taller, fecha: u.taller_desde, placa: u.placa }, container);
+    });
     container.querySelectorAll('[data-baja]').forEach(btn => {
       btn.onclick = async () => {
         if (!window.confirm('¿Dar de baja este registro y conservar su historial?')) return;
@@ -97,6 +110,7 @@ export async function renderUnidades(container, searchQuery = '') {
           <button id="back-unidades" class="btn btn-ghost btn-sm">← Volver a unidades</button>
           <span class="plate-badge">${escapeHtml(u.placa)}</span>
           <strong>${escapeHtml(u.marca)} ${escapeHtml(u.modelo)}</strong>
+          ${estadoUnidad({ ...unidades.find(item => item.id_unidad === idUnidad), estado: hist.estado_actual, en_taller: hist.en_taller })}
         </div>
         <div style="display:flex;gap:8px;">
           <button ${esBus(u) ? '' : 'disabled'} id="btn-nuevo-doc" class="btn btn-outline btn-sm">+ Documento</button>
@@ -296,7 +310,7 @@ export async function renderUnidades(container, searchQuery = '') {
           <div class="field-group" style="grid-column:1/-1;">
             <label class="field-label">Estado</label>
             <select name="estado" class="select">
-              ${[...new Set([existing ? existing.estado ?? '' : 'Operativo', 'Operativo', 'En mantenimiento'])].map((s) => `<option value="${escapeHtml(s)}" ${existing?.estado === s ? 'selected' : ''}>${escapeHtml(s || 'Sin estado')}</option>`).join('')}
+              ${[...new Set([existing ? existing.estado_guardado ?? '' : 'Operativo', 'Operativo'])].map((s) => `<option value="${escapeHtml(s)}" ${existing?.estado_guardado === s ? 'selected' : ''}>${escapeHtml(s || 'Sin estado')}</option>`).join('')}
             </select>
           </div>
           <p id="unidad-err" class="field-error hidden" style="grid-column:1/-1;"></p>
