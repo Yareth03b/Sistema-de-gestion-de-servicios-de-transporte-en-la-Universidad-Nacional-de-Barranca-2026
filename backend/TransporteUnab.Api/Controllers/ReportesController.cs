@@ -121,16 +121,11 @@ public class ReportesController : ControllerBase
     {
         var hoy = HoraPeru.Hoy;
         var (inicio, fin) = Periodo(mes, desde, hasta, hoy);
-        var habiles = (dias ?? "calendario").Trim().ToLowerInvariant() switch
-        {
-            "calendario" => false,
-            "habiles" or "hábiles" => true,
-            _ => throw new ReglaException("El parámetro 'dias' debe ser 'calendario' o 'habiles'.")
-        };
+        var habiles = Calculos.EsDiasHabiles(dias);
 
         // Días contados: desde el inicio hasta el fin del periodo o hasta hoy, lo que ocurra primero.
         var finConteo = fin < hoy ? fin : hoy;
-        var diasContados = ContarDias(inicio, finConteo, habiles);
+        var diasContados = Calculos.ContarDias(inicio, finConteo, habiles);
 
         var finExclusivo = fin.AddDays(1);
         var unidadesQ = _db.Unidades.AsNoTracking();
@@ -163,7 +158,7 @@ public class ReportesController : ControllerBase
             var fuente = r.km_consumidos is not null ? "vales" : r.km_recorridos > 0 ? "bitacora" : null;
             filas.Add(new FilaReporte(u.id_unidad, u.placa, Reglas.NumeroBus(u.placa), u.tipo, u.activo,
                 r.km_recorridos, fuente, r.galones, vales.GetValueOrDefault(u.id_unidad), r.rendimiento, r.km_acumulado,
-                PorDia(r.km_recorridos, diasContados), r.km_consumidos));
+                Calculos.PorDia(r.km_recorridos, diasContados), r.km_consumidos, r.galones_rendimiento));
         }
 
         // Rendimiento de la flota = Σ km ÷ Σ galones de las unidades con rendimiento calculable (no un promedio).
@@ -185,8 +180,8 @@ public class ReportesController : ControllerBase
                 km_periodo = totalKm,
                 galones = filas.Sum(f => f.galones),
                 vales = filas.Sum(f => f.vales),
-                rendimiento_flota = Calculos.Dividir(conRend.Sum(f => f.km_consumidos ?? 0), conRend.Sum(f => f.galones)),
-                promedio_diario = PorDia(totalKm, diasContados)
+                rendimiento_flota = Calculos.Dividir(conRend.Sum(f => f.km_consumidos ?? 0), conRend.Sum(f => f.galones_rendimiento)),
+                promedio_diario = Calculos.PorDia(totalKm, diasContados)
             },
             unidades = filas.Select(f => new
             {
@@ -198,6 +193,7 @@ public class ReportesController : ControllerBase
                 f.km_periodo,
                 f.km_fuente,
                 f.galones,
+                f.galones_rendimiento,
                 f.vales,
                 f.rendimiento,
                 f.km_acumulado,
@@ -208,10 +204,7 @@ public class ReportesController : ControllerBase
 
     private record FilaReporte(int id_unidad, string placa, string? numero_bus, string tipo, bool activo, int km_periodo,
         string? km_fuente, decimal galones, int vales, decimal? rendimiento, int km_acumulado, decimal? promedio_diario,
-        int? km_consumidos);
-
-    private static decimal? PorDia(int km, int dias)
-        => dias > 0 ? Math.Round((decimal)km / dias, 2, MidpointRounding.AwayFromZero) : null;
+        int? km_consumidos, decimal galones_rendimiento);
 
     /// <summary>Periodo [inicio, fin] (fin inclusive) a partir de mes o desde/hasta. Sin parámetros: mes actual.</summary>
     private static (DateTime inicio, DateTime fin) Periodo(string? mes, DateTime? desde, DateTime? hasta, DateTime hoy)
@@ -244,16 +237,5 @@ public class ReportesController : ControllerBase
         if (inicio.Year < 2000) throw new ReglaException("El periodo no es válido.", "V-06");
         if (inicio > hoy) throw new ReglaException("El periodo aún no empieza.", "V-06");
         return (inicio, fin);
-    }
-
-    /// <summary>Días entre inicio y fin (inclusive). Hábiles = lunes a viernes (no hay tabla de feriados).</summary>
-    internal static int ContarDias(DateTime inicio, DateTime fin, bool habiles)
-    {
-        if (fin < inicio) return 0;
-        if (!habiles) return (fin - inicio).Days + 1;
-        var n = 0;
-        for (var d = inicio; d <= fin; d = d.AddDays(1))
-            if (d.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday) n++;
-        return n;
     }
 }
