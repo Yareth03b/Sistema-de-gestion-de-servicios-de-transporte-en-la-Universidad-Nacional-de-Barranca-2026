@@ -612,3 +612,106 @@ Errores:
 
 **Web:** tras un PUT o un DELETE correctos, volver a pedir `GET /api/rutas` para refrescar el desplegable.
 Si el DELETE devuelve 409, mostrar `message` tal cual: dice por qué no se puede borrar.
+
+## 13. Comparar buses disponibles para un viaje (rama `feat/comparar-buses`, HU-29)
+
+### 13.1 `GET /api/estimacion/comparar`
+
+Solo lectura: no guarda nada. Para guardar la estimación del bus elegido se sigue usando `POST /api/estimacion`.
+
+| Parámetro | Obligatorio | Valor |
+|---|---|---|
+| `distancia_km` | sí | Entero > 0. Es la distancia **total** del viaje (ida y vuelta), igual que en el POST |
+| `precio_galon` | sí | > 0 |
+| `id_solicitud` | uno de los dos | Toma `fecha_salida`, `hora_salida`, `fecha_regreso`, `hora_regreso` y `pasajeros` de la solicitud. Si se envía, tiene prioridad: se ignoran `fecha` y `pasajeros` |
+| `fecha` | uno de los dos | `yyyy-MM-dd`. Sin solicitud, el viaje ocupa el **día completo** |
+| `pasajeros` | no | > 0. Solo se usa sin `id_solicitud` |
+
+Ejemplos:
+`/api/estimacion/comparar?distancia_km=240&precio_galon=16.5&id_solicitud=1`
+`/api/estimacion/comparar?distancia_km=240&precio_galon=16.5&fecha=2026-12-05&pasajeros=35`
+
+```json
+{
+  "fecha": "2026-12-05",
+  "pasajeros": 35,
+  "fuente_cierre": "Cierre T3 2026",
+  "buses": [
+    { "id_unidad": 2, "placa": "EGT-802", "numero_bus": "802", "capacidad": 40,
+      "rendimiento": 10.00, "fuente_rendimiento": "Últimos 3 meses", "costo_estimado": 640.00,
+      "disponible": true, "mas_economico": true, "avisos": [] },
+    { "id_unidad": 6, "placa": "EGT-806", "numero_bus": "806", "capacidad": 40,
+      "rendimiento": 7.00, "fuente_rendimiento": "Cierre T3 2026", "costo_estimado": 914.29,
+      "disponible": true, "mas_economico": false,
+      "avisos": ["Tiene otro viaje aprobado: SV-2026-002 (05/12 06:30 – 05/12 19:00)"] },
+    { "id_unidad": 3, "placa": "EGT-803", "numero_bus": "803", "capacidad": null,
+      "rendimiento": null, "fuente_rendimiento": null, "costo_estimado": null,
+      "disponible": true, "mas_economico": false,
+      "avisos": ["Sin datos de rendimiento", "Capacidad no registrada"] },
+    { "id_unidad": 5, "placa": "EGT-805", "numero_bus": "805", "capacidad": 30,
+      "rendimiento": 12.00, "fuente_rendimiento": "Cierre T3 2026", "costo_estimado": 533.33,
+      "disponible": false, "mas_economico": false, "avisos": ["Capacidad 30 < 35 pasajeros"] },
+    { "id_unidad": 4, "placa": "EGT-804", "numero_bus": "804", "capacidad": 40,
+      "rendimiento": 9.00, "fuente_rendimiento": "Cierre T3 2026", "costo_estimado": 711.11,
+      "disponible": false, "mas_economico": false, "avisos": ["En taller (ingresó el 21/11/2026)"] }
+  ]
+}
+```
+
+- `fecha`: fecha de salida del viaje. `pasajeros`: los de la solicitud, los enviados o `null`.
+- `fuente_cierre`: `"Cierre T{n} {año}"` si existe el cierre del trimestre **anterior** al del viaje; si no, `null`.
+- Entran **todos los buses activos**. Las camionetas, las minivans y las unidades dadas de baja no aparecen.
+
+### 13.2 Reglas
+
+**Rendimiento (km/gal, 2 decimales).**
+1. Si existe el cierre del trimestre inmediatamente anterior al de la fecha del viaje (hora de Lima), y la fila de ese
+   bus tiene rendimiento, se usa ese valor (`fuente_rendimiento: "Cierre T3 2026"`).
+2. Si no, se usa el de los **últimos 3 meses hasta hoy** (Lima), con el mismo cálculo que el cierre y
+   `/api/reportes/por-unidad` (`Calculos.ResumirPeriodo`): Σ km de los vales con vale anterior ÷ Σ galones de esos
+   vales (`fuente_rendimiento: "Últimos 3 meses"`).
+3. Si no hay vales con referencia, `rendimiento`, `fuente_rendimiento` y `costo_estimado` van en `null`, con el
+   aviso «Sin datos de rendimiento».
+
+**Costo.** `costo_estimado = distancia_km ÷ rendimiento × precio_galon`, redondeado a 2 decimales. Es la misma
+fórmula que `POST /api/estimacion`.
+
+**No disponible** (`disponible: false`, con el motivo en `avisos`):
+- **En taller durante el viaje:** el bus tiene un mantenimiento con ingreso ≤ fecha de regreso y (sin salida o
+  salida > fecha de salida). Es la misma regla que el estado «En mantenimiento»: el día de la salida del taller el bus
+  ya está disponible. Aviso: «En taller (ingresó el dd/MM/yyyy)».
+- **Capacidad conocida menor que los pasajeros:** «Capacidad 30 < 35 pasajeros». Sin `pasajeros`, no se compara.
+
+**Solo avisos** (el bus sigue disponible):
+- «Capacidad no registrada» si `capacidad` es `null`.
+- «Tiene otro viaje aprobado: {código} (dd/MM HH:mm – dd/MM HH:mm)» si otra solicitud **Aprobada** tiene una
+  estimación de ese bus y sus fechas y horas se cruzan con este viaje. No bloquea (decisión de Santiago).
+  - La propia solicitud consultada no cuenta.
+  - Dos viajes que solo se tocan en un extremo (uno termina a las 08:00 y el otro empieza a las 08:00) no se cruzan.
+- «Sin datos de rendimiento» (sin costo).
+
+**Orden.**
+1. Disponibles con costo, de menor a mayor costo.
+2. Disponibles sin rendimiento.
+3. No disponibles, por costo.
+
+A igual costo, se ordena por placa. `mas_economico: true` solo en el primer bus disponible con costo (puede no haber
+ninguno). Un bus más barato que no está disponible nunca se marca como el más económico.
+
+### 13.3 Errores
+
+| Caso | HTTP |
+|---|---|
+| Falta `distancia_km` o `precio_galon`, o alguno es ≤ 0 | 400 |
+| No se envía ni `id_solicitud` ni `fecha` | 400 |
+| `pasajeros` ≤ 0 | 400 |
+| `distancia_km` o `precio_galon` no son números, o la `fecha` no es válida | 400 |
+| `id_solicitud` no existe | 404 |
+
+```json
+{ "message": "Indique distancia_km mayor a 0 (distancia total del viaje).", "codigo": null }
+{ "message": "Indique precio_galon mayor a 0.", "codigo": null }
+{ "message": "Indique id_solicitud, o bien fecha (yyyy-MM-dd) del viaje.", "codigo": null }
+{ "message": "La cantidad de pasajeros debe ser mayor a 0.", "codigo": null }
+{ "message": "La solicitud 999 no existe.", "codigo": null }
+```
