@@ -1,10 +1,10 @@
-import { falloCampo, campoRegistro, errorKilometraje, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=10';
-import { CONFIG } from '../config.js?v=10';
-import { api } from '../api.js?v=10';
-import { campoArea, altaArea, prepararArea } from './areas.js?v=10';
-import { mostrarErrorFormulario, errorCampo, mesActual, opcionesPeriodo, limitarTabla, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=10';
+import { falloCampo, campoRegistro, errorKilometraje, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=11';
+import { CONFIG } from '../config.js?v=11';
+import { api } from '../api.js?v=11';
+import { campoArea, altaArea, prepararArea } from './areas.js?v=11';
+import { mostrarErrorFormulario, errorCampo, mesActual, opcionesPeriodo, limitarTabla, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=11';
 
-export async function renderCombustible(container, searchQuery = '') {
+export async function renderCombustible(container, searchQuery = '', param, { filtros = {} } = {}) {
   const [abasts, unidades, conductores, areasData] = await Promise.all([
     api.getAbastecimientos(),
     api.getUnidades(true),
@@ -13,11 +13,11 @@ export async function renderCombustible(container, searchQuery = '') {
   ]);
   const areas = areasData.areas;
 
-  let filterUnidad = 'all';
-  let filterArea = 'all';
+  let filterUnidad = unidades.some(u => String(u.id_unidad) === filtros['comb-unidad']) ? filtros['comb-unidad'] : 'all';
+  let filterArea = areas.some(a => String(a.id_area) === filtros['comb-area']) ? filtros['comb-area'] : 'all';
 
   const turnos = await api.getTurnos();
-  let periodo = mesActual();
+  let periodo = filtros['filtro-periodo'] ?? mesActual();
   const paint = () => {
     const q = searchQuery.trim().toLowerCase();
     const filtered = abasts.filter((a) => {

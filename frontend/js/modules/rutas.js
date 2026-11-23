@@ -1,5 +1,5 @@
-import { api } from '../api.js?v=10';
-import { limitarTabla, mostrarErrorFormulario, openModal, showToast, escapeHtml } from '../utils.js?v=10';
+import { api } from '../api.js?v=11';
+import { limitarTabla, mostrarErrorFormulario, openModal, showToast, escapeHtml } from '../utils.js?v=11';
 
 export async function renderRutas(container, searchQuery = '') {
   const { rutas } = await api.getRutasYCostos();
