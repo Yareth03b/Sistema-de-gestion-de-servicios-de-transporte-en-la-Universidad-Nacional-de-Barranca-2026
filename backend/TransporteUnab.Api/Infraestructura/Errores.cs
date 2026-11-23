@@ -91,6 +91,8 @@ public class ManejadorErrores : IExceptionHandler
             547 when m.Contains("CK_SolicitudViaje_Pasajeros") => (400, "La cantidad de pasajeros debe ser mayor a 0.", null),
             547 when m.Contains("CK_SolicitudViaje_Estado") => (400, "El estado debe ser Pendiente, Estimada, Aprobada o Rechazada.", null),
             547 when m.Contains("CK_") => (400, "Los datos no cumplen una regla de la base de datos.", null),
+            547 when m.Contains("DELETE") && (m.Contains("FK_Abastecimiento_Area") || m.Contains("FK_SolicitudViaje_Area"))
+                => (409, "No se puede borrar: el área tiene vales o solicitudes de viaje asociados.", "V-11"),
             547 when m.Contains("DELETE") => (409, "No se puede eliminar: el registro tiene historial asociado.", "V-11"),
             547 => (400, "Uno de los registros relacionados no existe.", null),
             8152 or 2628 => (400, "Uno de los textos supera la longitud permitida.", null),

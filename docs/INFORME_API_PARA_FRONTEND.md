@@ -550,3 +550,65 @@ Ejemplos de error:
 
 Las áreas se siguen obteniendo con `GET /api/rutas` (`{ rutas, areas }`), sin cambios. No existe una ruta
 `/api/rutas-y-costos`: la pantalla «Rutas y costos» usa `GET /api/rutas`.
+
+## 12. Editar y borrar áreas solicitantes (rama `feat/areas-editar-borrar`, 23/11/2026)
+
+No hay cambios en la BD ni en los contratos existentes: `GET /api/rutas` sigue devolviendo `{ rutas, areas }`
+(cada área con `id_area`, `nombre`, `vales` y `galones`) y `POST /api/rutas/areas` sigue igual.
+
+| Verbo y ruta | Cuerpo | Qué hace | Errores |
+|---|---|---|---|
+| `PUT /api/rutas/areas/{id}` | `{ "nombre": "..." }` | Renombra el área. Los vales y las solicitudes apuntan a `id_area`, así que no cambian | 404 · 400 si el nombre está vacío o supera los 100 caracteres · 409 si **otra** área ya tiene ese nombre |
+| `DELETE /api/rutas/areas/{id}` | — | Borra el área si ningún vale ni solicitud la usa | 404 · **409 `V-11`** si tiene vales o solicitudes |
+
+### 12.1 `PUT /api/rutas/areas/{id}`
+
+- `nombre`: obligatorio, se recortan los espacios, máx. 100 caracteres (la misma regla que el POST).
+- La BD no tiene UNIQUE sobre `nombre`, así que la API valida que no se repita **sin distinguir mayúsculas**.
+  Volver a guardar el mismo nombre, o cambiar solo sus mayúsculas, está permitido.
+- Respuesta 200: el área actualizada, con el mismo formato que el POST.
+
+```json
+// PUT /api/rutas/areas/2   { "nombre": "Facultad de Ingeniería" }
+{ "id_area": 2, "nombre": "Facultad de Ingeniería" }
+```
+
+Errores:
+
+```json
+// 400: nombre vacío
+{ "message": "El campo 'nombre' es obligatorio.", "codigo": null }
+// 400: nombre demasiado largo
+{ "message": "El campo 'nombre' admite como máximo 100 caracteres.", "codigo": null }
+// 404
+{ "message": "El área 999 no existe.", "codigo": null }
+// 409: el nombre ya lo usa otra área
+{ "message": "Ya existe otra área con el nombre 'Facultad de Ingeniería'.", "codigo": null }
+```
+
+### 12.2 `DELETE /api/rutas/areas/{id}`
+
+- Antes de borrar, la API cuenta los vales (`Abastecimiento.id_area`) y las solicitudes de viaje
+  (`SolicitudViaje.id_area`) que usan el área. Si hay alguno, responde **409** con `codigo: "V-11"` y el conteo
+  (en singular o plural, y sin mencionar lo que es 0). El área no se borra.
+- Si no tiene uso, el borrado es **físico** y responde 200 con `{ message }`. Las áreas no tienen baja lógica:
+  la tabla no tiene columna `activo`.
+
+```json
+// 200
+{ "message": "Área 'Oficina de Bienestar' borrada." }
+```
+
+Errores:
+
+```json
+// 404
+{ "message": "El área 999 no existe.", "codigo": null }
+// 409
+{ "message": "No se puede borrar: el área 'Facultad de Ingeniería' tiene 3 vales.", "codigo": "V-11" }
+{ "message": "No se puede borrar: el área 'Comisión organizadora' tiene 1 solicitud.", "codigo": "V-11" }
+{ "message": "No se puede borrar: el área 'Facultad de Ingeniería' tiene 1 vale y 2 solicitudes.", "codigo": "V-11" }
+```
+
+**Web:** tras un PUT o un DELETE correctos, volver a pedir `GET /api/rutas` para refrescar el desplegable.
+Si el DELETE devuelve 409, mostrar `message` tal cual: dice por qué no se puede borrar.
