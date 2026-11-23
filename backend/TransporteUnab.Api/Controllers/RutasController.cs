@@ -62,4 +62,49 @@ public class RutasController : ControllerBase
         await _db.SaveChangesAsync();
         return Ok(area);
     }
+
+    /// <summary>
+    /// Renombra un área. Los vales y las solicitudes apuntan a id_area, así que no se tocan.
+    /// La BD no tiene UNIQUE sobre nombre: la unicidad (sin distinguir mayúsculas) se valida aquí.
+    /// </summary>
+    [HttpPut("areas/{id:int}")]
+    public async Task<IActionResult> UpdateArea(int id, [FromBody] AreaDto dto)
+    {
+        var area = await BuscarArea(id);
+        var nombre = Reglas.Requerido(dto.nombre, "nombre", 100);
+        var minusculas = nombre.ToLower();
+        if (await _db.Areas.AnyAsync(a => a.id_area != id && a.nombre.ToLower() == minusculas))
+            throw ReglaException.Conflicto($"Ya existe otra área con el nombre '{nombre}'.");
+        area.nombre = nombre;
+        await _db.SaveChangesAsync();
+        return Ok(area);
+    }
+
+    /// <summary>
+    /// Borra un área sin uso. Si algún vale (Abastecimiento.id_area) o alguna solicitud (SolicitudViaje.id_area)
+    /// la usa, responde 409 V-11 con el conteo. El mapeo de FK de Errores.cs queda como red de seguridad.
+    /// </summary>
+    [HttpDelete("areas/{id:int}")]
+    public async Task<IActionResult> DeleteArea(int id)
+    {
+        var area = await BuscarArea(id);
+        var vales = await _db.Abastecimientos.CountAsync(a => a.id_area == id);
+        var solicitudes = await _db.SolicitudesViaje.CountAsync(s => s.id_area == id);
+        if (vales + solicitudes > 0)
+        {
+            var partes = new List<string>();
+            if (vales > 0) partes.Add(vales == 1 ? "1 vale" : $"{vales} vales");
+            if (solicitudes > 0) partes.Add(solicitudes == 1 ? "1 solicitud" : $"{solicitudes} solicitudes");
+            throw ReglaException.Conflicto(
+                $"No se puede borrar: el área '{area.nombre}' tiene {string.Join(" y ", partes)}.", "V-11");
+        }
+
+        _db.Areas.Remove(area);
+        await _db.SaveChangesAsync();
+        return Ok(new { message = $"Área '{area.nombre}' borrada." });
+    }
+
+    private async Task<AreaSolicitante> BuscarArea(int id)
+        => await _db.Areas.FirstOrDefaultAsync(a => a.id_area == id)
+           ?? throw ReglaException.NoEncontrado($"El área {id} no existe.");
 }
