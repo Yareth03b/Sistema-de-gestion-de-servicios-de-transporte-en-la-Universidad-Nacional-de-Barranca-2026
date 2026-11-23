@@ -3,12 +3,10 @@ import { api } from '../api.js?v=12';
 import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, openModal, showToast, escapeHtml } from '../utils.js?v=12';
 import { renderSolicitudes, fechaHora } from './solicitudes.js?v=12';
 
-const decimal = new Intl.NumberFormat('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
 function mostrarComparacion({ buses, fecha, pasajeros, fuente_cierre }, parametros, elegir) {
   const resumen = [formatDateES(fecha)];
   if (pasajeros != null) resumen.push(`${pasajeros} pasajeros`);
-  resumen.push(`${formatNumber(parametros.distancia_km)} km`, `S/ ${decimal.format(parametros.precio_galon)} por galón`);
+  resumen.push(`${formatNumber(parametros.distancia_km)} km`, `S/ ${formatNumber(parametros.precio_galon, 2)} por galón`);
 
   openModal({
     title: 'Comparar buses',
@@ -20,9 +18,9 @@ function mostrarComparacion({ buses, fecha, pasajeros, fuente_cierre }, parametr
           <td><strong class="plate-badge">${escapeHtml(bus.placa)}</strong>
             ${bus.mas_economico ? '<span class="pill pill-success">Más económico</span>' : ''}</td>
           <td data-label="Capacidad">${escapeHtml(bus.capacidad ?? '—')}</td>
-          <td data-label="Rendimiento (km/gal)">${bus.rendimiento == null ? '—' : decimal.format(bus.rendimiento)}
+          <td data-label="Rendimiento (km/gal)">${formatNumber(bus.rendimiento, 2)}
             ${bus.fuente_rendimiento ? `<small>${escapeHtml(bus.fuente_rendimiento)}</small>` : ''}</td>
-          <td data-label="Costo estimado">${bus.costo_estimado == null ? '—' : 'S/ ' + decimal.format(bus.costo_estimado)}</td>
+          <td data-label="Costo estimado">${bus.costo_estimado == null ? '—' : 'S/ ' + formatNumber(bus.costo_estimado, 2)}</td>
           <td><span class="pill ${bus.disponible ? 'pill-info' : 'pill-danger'}">${bus.disponible ? 'Disponible' : 'No disponible'}</span>
             ${bus.avisos.length ? `<ul>${bus.avisos.map(aviso => `<li>${escapeHtml(aviso)}</li>`).join('')}</ul>` : ''}
             ${bus.disponible && bus.rendimiento > 0 ? `<button type="button" class="btn btn-outline btn-sm" data-usar="${bus.id_unidad}">Usar este bus</button>` : ''}</td>
@@ -197,7 +195,7 @@ async function renderCalculadora(container, solicitud, alGuardar, borrador) {
       return null;
     }
     const costo = (km / rend) * precio;
-    previewEl.textContent = `S/ ${decimal.format(costo)}`;
+    previewEl.textContent = `S/ ${formatNumber(costo, 2)}`;
     return +costo.toFixed(2);
   };
 
