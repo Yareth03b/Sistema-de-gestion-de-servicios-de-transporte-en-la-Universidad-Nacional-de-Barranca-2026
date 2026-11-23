@@ -1,9 +1,9 @@
-import { CONFIG } from '../config.js?v=9';
-import { getSession } from './auth.js?v=9';
-import { api } from '../api.js?v=9';
-import { tablaDatos, formatHora, formatNumber, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=9';
+import { CONFIG } from '../config.js?v=10';
+import { getSession } from './auth.js?v=10';
+import { api } from '../api.js?v=10';
+import { tablaDatos, formatHora, formatNumber, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=10';
 
-import { abrirSalida, proximosPorKilometraje } from './mantenimiento.js?v=9';
+import { abrirSalida, proximosPorKilometraje } from './mantenimiento.js?v=10';
 
 function vencimiento(doc) {
   if (!doc || doc.dias_para_vencer == null) return 'Sin vencimiento registrado';

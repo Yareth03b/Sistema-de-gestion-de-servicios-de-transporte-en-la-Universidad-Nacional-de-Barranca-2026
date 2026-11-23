@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=9';
-import { showToast } from './utils.js?v=9';
+import { CONFIG } from './config.js?v=10';
+import { showToast } from './utils.js?v=10';
 
 let apiOnline = false;
 
@@ -201,6 +201,14 @@ export const api = {
 
   async saveArea(payload) {
     return request('/rutas/areas', { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  async updateArea(id, payload) {
+    return request(`/rutas/areas/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+  },
+
+  async deleteArea(id) {
+    return request(`/rutas/areas/${id}`, { method: 'DELETE' });
   },
 
   // --- Reportes y Conciliación ---
