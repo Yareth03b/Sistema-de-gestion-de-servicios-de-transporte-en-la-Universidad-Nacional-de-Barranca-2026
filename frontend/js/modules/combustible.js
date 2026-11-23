@@ -1,8 +1,8 @@
-import { falloCampo, campoRegistro, errorKilometraje, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=11';
-import { CONFIG } from '../config.js?v=11';
-import { api } from '../api.js?v=11';
-import { campoArea, altaArea, prepararArea } from './areas.js?v=11';
-import { mostrarErrorFormulario, errorCampo, mesActual, opcionesPeriodo, limitarTabla, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=11';
+import { falloCampo, campoRegistro, errorKilometraje, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=12';
+import { CONFIG } from '../config.js?v=12';
+import { api } from '../api.js?v=12';
+import { campoArea, altaArea, prepararArea } from './areas.js?v=12';
+import { mostrarErrorFormulario, errorCampo, mesActual, opcionesPeriodo, limitarTabla, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=12';
 
 export async function renderCombustible(container, searchQuery = '', param, { filtros = {} } = {}) {
   const [abasts, unidades, conductores, areasData] = await Promise.all([

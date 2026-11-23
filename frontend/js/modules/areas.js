@@ -1,5 +1,5 @@
-import { api } from '../api.js?v=11';
-import { escapeHtml, openModal, showToast } from '../utils.js?v=11';
+import { api } from '../api.js?v=12';
+import { escapeHtml, openModal, showToast } from '../utils.js?v=12';
 
 export function campoArea(obligatorio = false) {
   return `<div class="field-group campo-area">

@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=11';
-import { showToast } from './utils.js?v=11';
+import { CONFIG } from './config.js?v=12';
+import { showToast } from './utils.js?v=12';
 
 let apiOnline = false;
 
@@ -55,6 +55,14 @@ async function request(path, { signal, ...options } = {}) {
     clearTimeout(timer);
     signal?.removeEventListener('abort', abortar);
   }
+}
+
+function rutaConParametros(ruta, valores) {
+  const params = new URLSearchParams();
+  for (const [clave, valor] of Object.entries(valores)) {
+    if (valor != null && valor !== '') params.set(clave, valor);
+  }
+  return params.size ? ruta + '?' + params : ruta;
 }
 
 export const api = {
@@ -259,11 +267,7 @@ export const api = {
 
   // --- Estimación de Viaje ---
   async getSolicitudes({ estado, id_area, desde, hasta } = {}) {
-    const params = new URLSearchParams();
-    for (const [clave, valor] of Object.entries({ estado, id_area, desde, hasta })) {
-      if (valor != null && valor !== '') params.set(clave, valor);
-    }
-    return request(params.size ? '/solicitudes?' + params : '/solicitudes');
+    return request(rutaConParametros('/solicitudes', { estado, id_area, desde, hasta }));
   },
 
   async getSolicitud(id) {
@@ -284,6 +288,10 @@ export const api = {
 
   async getEstimaciones() {
     return request('/estimacion');
+  },
+
+  async compararBuses({ distancia_km, precio_galon, id_solicitud, fecha, pasajeros }) {
+    return request(rutaConParametros('/estimacion/comparar', { distancia_km, precio_galon, id_solicitud, fecha, pasajeros }));
   },
 
   async saveEstimacion(payload) {
