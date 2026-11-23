@@ -1,7 +1,8 @@
-import { falloCampo, campoRegistro, errorKilometraje, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=9';
-import { CONFIG } from '../config.js?v=9';
-import { api } from '../api.js?v=9';
-import { mostrarErrorFormulario, errorCampo, mesActual, opcionesPeriodo, limitarTabla, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=9';
+import { falloCampo, campoRegistro, errorKilometraje, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=10';
+import { CONFIG } from '../config.js?v=10';
+import { api } from '../api.js?v=10';
+import { campoArea, altaArea, prepararArea } from './areas.js?v=10';
+import { mostrarErrorFormulario, errorCampo, mesActual, opcionesPeriodo, limitarTabla, formatDateES, formatNumber, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=10';
 
 export async function renderCombustible(container, searchQuery = '') {
   const [abasts, unidades, conductores, areasData] = await Promise.all([
@@ -76,7 +77,7 @@ export async function renderCombustible(container, searchQuery = '') {
                   <td>${formatDateES(a.fecha)}</td>
                   <td><span class="plate-badge">${escapeHtml(a.placa)}</span></td>
                   <td>${escapeHtml(a.conductor)}</td>
-                  <td>${escapeHtml(a.area_nombre)}</td>
+                  <td>${escapeHtml(areas.find(area => area.id_area === a.id_area)?.nombre ?? a.area_nombre)}</td>
                   <td class="num-right">${formatSpaceInt(a.km_actual)}</td>
                   <td class="num-right">${formatNumber(a.galones, 2)}</td>
                   <td class="num-right">${formatSpaceInt(a.km_consumidos)}</td>
@@ -133,13 +134,6 @@ export async function renderCombustible(container, searchQuery = '') {
             </select>
           </div>
           <div class="field-group">
-            <label class="field-label">Área solicitante</label>
-            <select name="id_area" class="select">
-              <option value="">Sin área específica</option>
-              ${areas.map((ar) => `<option value="${ar.id_area}" ${existing?.id_area === ar.id_area ? 'selected' : ''}>${escapeHtml(ar.nombre)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="field-group">
             <label class="field-label">Tipo de combustible</label>
             <select name="tipo_combustible" class="select" required>
               <option value="Diésel B5" ${existing?.tipo_combustible === 'Diésel B5' ? 'selected' : ''}>Diésel B5</option>
@@ -147,6 +141,8 @@ export async function renderCombustible(container, searchQuery = '') {
               <option value="Gasohol 90" ${existing?.tipo_combustible === 'Gasohol 90' ? 'selected' : ''}>Gasohol 90</option>
             </select>
           </div>
+          ${campoArea()}
+          ${altaArea}
           <div class="field-group">
             <label class="field-label">Km actual</label>
             <input name="km_actual" type="number" class="input" value="${existing?.km_actual ?? ''}" placeholder="Ej. 12045" required min="0" />
@@ -173,6 +169,10 @@ export async function renderCombustible(container, searchQuery = '') {
       `,
       onMount(close) {
         const form = document.getElementById('vale-form');
+        prepararArea(form, areas, existing?.id_area, () => {
+          if (!areas.some(a => String(a.id_area) === filterArea)) filterArea = 'all';
+          paint();
+        });
         const { fecha, id_unidad, km_actual, galones, consumidos, rendimiento } = form.elements;
         const guardar = form.querySelector('[type=submit]');
         const referencia = form.querySelector('#referencia-vale');

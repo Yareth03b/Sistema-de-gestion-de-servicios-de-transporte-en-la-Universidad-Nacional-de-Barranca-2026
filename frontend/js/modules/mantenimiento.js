@@ -1,6 +1,6 @@
-import { CONFIG } from '../config.js?v=9';
-import { api } from '../api.js?v=9';
-import { tablaDatos, mostrarErrorFormulario, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=9';
+import { CONFIG } from '../config.js?v=10';
+import { api } from '../api.js?v=10';
+import { tablaDatos, mostrarErrorFormulario, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=10';
 
 // Solo al faltar el endpoint: calcula las distancias con el último preventivo por fecha.
 export function proximosPorKilometraje(unidades, mants) {

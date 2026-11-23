@@ -1,5 +1,6 @@
-import { api } from '../api.js?v=9';
-import { escapeHtml, formatDateES, formatHora, limitarTabla, mostrarErrorFormulario, openModal, showToast } from '../utils.js?v=9';
+import { api } from '../api.js?v=10';
+import { campoArea, altaArea, prepararArea } from './areas.js?v=10';
+import { escapeHtml, formatDateES, formatHora, limitarTabla, mostrarErrorFormulario, openModal, showToast } from '../utils.js?v=10';
 
 const coloresEstado = { Pendiente: 'urgent', Estimada: 'info', Aprobada: 'success', Rechazada: 'danger' };
 
@@ -80,10 +81,8 @@ function abrirFormulario(areas, actualizar, solicitud = {}) {
     title: solicitud.id_solicitud ? 'Editar solicitud' : 'Nueva solicitud',
     bodyHtml: `<form id="solicitud-form"><div class="form-grid-2">
       ${campo('codigo', 'Código del documento', 'text', 'maxlength="30"')}
-      <div class="field-group"><label class="field-label">Área solicitante</label>
-        <select class="select" name="id_area" required><option value="">Selecciona un área</option>
-          ${areas.map(a => `<option value="${a.id_area}" ${a.id_area === solicitud.id_area ? 'selected' : ''}>${escapeHtml(a.nombre)}</option>`).join('')}
-        </select></div>
+      ${campoArea(true)}
+      ${altaArea}
       ${campo('encargado', 'Encargado', 'text', 'maxlength="100"')}
       ${campo('pasajeros', 'Cantidad de pasajeros', 'number', 'min="1" step="1"')}
       ${campo('fecha_salida', 'Fecha de salida', 'date')}${campo('hora_salida', 'Hora de salida', 'time')}
@@ -99,6 +98,7 @@ function abrirFormulario(areas, actualizar, solicitud = {}) {
       <button type="submit" class="btn btn-primary">Guardar solicitud</button></div></form>`,
     onMount(close) {
       const form = document.getElementById('solicitud-form');
+      prepararArea(form, areas, solicitud.id_area, actualizar);
       form.onsubmit = async e => {
         e.preventDefault();
         const datos = Object.fromEntries(new FormData(form));

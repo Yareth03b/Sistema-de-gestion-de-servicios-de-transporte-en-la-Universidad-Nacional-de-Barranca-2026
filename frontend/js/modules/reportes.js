@@ -1,6 +1,6 @@
-import { api } from '../api.js?v=9';
-import { mesActual, tablaDatos, limitarTabla, exportarCsv, formatNumber, formatSpaceInt, escapeHtml } from '../utils.js?v=9';
-import { renderCierre } from './cierre.js?v=9';
+import { api } from '../api.js?v=10';
+import { mesActual, tablaDatos, limitarTabla, exportarCsv, formatNumber, formatSpaceInt, escapeHtml } from '../utils.js?v=10';
+import { renderCierre } from './cierre.js?v=10';
 
 export async function renderReportes(container) {
   container.innerHTML = `<div class="tabs-bar">

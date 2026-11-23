@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js?v=9';
+import { CONFIG } from './config.js?v=10';
 
 export function formatNumber(n, decimals = 0) {
   if (n == null || !Number.isFinite(Number(n))) return '—';
@@ -168,72 +168,62 @@ export function mostrarErrorFormulario(form, err, campo) {
   form.querySelector('[aria-invalid="true"]')?.focus();
 }
 
-let modalActivo = false;
-let cerrandoPorCodigo = false;
-let focoAnterior = null;
-
-function cerrarModalDom(retirarHistorial = true) {
-  if (!modalActivo) return;
-  modalActivo = false;
-  const root = document.getElementById('modal-root');
-  if (root) root.innerHTML = '';
-  if (focoAnterior && typeof focoAnterior.focus === 'function') {
-    try { focoAnterior.focus(); } catch {}
-    focoAnterior = null;
-  }
-  if (retirarHistorial && window.history.state?.modal) {
-    cerrandoPorCodigo = true;
-    window.history.back();
-    setTimeout(() => { cerrandoPorCodigo = false; }, 500);
-  }
-}
+const modales = [];
 
 if (typeof window !== 'undefined') {
   if (window.history.state?.modal) {
     window.history.replaceState(null, '');
   }
 
-  window.addEventListener('popstate', () => {
-    if (cerrandoPorCodigo) {
-      cerrandoPorCodigo = false;
-      return;
+  window.addEventListener('popstate', e => {
+    const profundidad = Number(e.state?.modal || 0);
+    while (modales.length > profundidad) {
+      const { capa, foco, onClose } = modales.pop();
+      capa.remove();
+      modales.at(-1)?.capa.classList.remove('hidden');
+      if (foco?.isConnected) foco.focus();
+      onClose?.();
     }
-    if (modalActivo) {
-      cerrarModalDom(false);
-    }
+    // Adelante o una recarga pueden volver a una entrada cuyo formulario ya se cerró.
+    if (profundidad > modales.length) window.history.replaceState(null, '');
   });
 }
 
-export function openModal({ title, bodyHtml, onMount }) {
+export function openModal({ title, bodyHtml, onMount, onClose }) {
   const root = document.getElementById('modal-root');
-  if (!modalActivo && !window.history.state?.modal) {
-    window.history.pushState({ modal: true }, '');
-  }
-  modalActivo = true;
-  focoAnterior = document.activeElement;
-
-  root.innerHTML = `
-    <div class="modal-backdrop" id="modal-backdrop">
-      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  const foco = document.activeElement;
+  const nivel = modales.length + 1;
+  window.history.pushState({ modal: nivel }, '');
+  modales.at(-1)?.capa.classList.add('hidden');
+  const capa = document.createElement('div');
+  capa.className = 'modal-backdrop';
+  capa.innerHTML = `
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title-${nivel}">
         <div class="modal-header">
-          <h2 class="modal-title" id="modal-title">${escapeHtml(title)}</h2>
-          <button type="button" class="modal-close" id="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 class="modal-title" id="modal-title-${nivel}">${escapeHtml(title)}</h2>
+          <button type="button" class="modal-close" aria-label="Cerrar">×</button>
         </div>
-        <div id="modal-body">${bodyHtml}</div>
+        <div>${bodyHtml}</div>
       </div>
-    </div>
   `;
-  const close = () => cerrarModalDom(true);
-  document.getElementById('modal-close-btn').addEventListener('click', close);
-  document.getElementById('modal-backdrop').addEventListener('click', (e) => {
-    if (e.target.id === 'modal-backdrop') close();
+  modales.push({ capa, foco, onClose });
+  root.append(capa);
+  let cerrando = false;
+  const close = () => {
+    if (modales.at(-1)?.capa !== capa || cerrando) return;
+    cerrando = true;
+    window.history.back();
+  };
+  capa.querySelector('.modal-close').addEventListener('click', close);
+  capa.addEventListener('click', (e) => {
+    if (e.target === capa) close();
   });
-  root.querySelector('[data-cancelar]')?.addEventListener('click', close);
-  const form = root.querySelector('form');
+  capa.querySelector('[data-cancelar]')?.addEventListener('click', close);
+  const form = capa.querySelector('form');
   if (form) prepararCampos(form);
-  const primerControl = root.querySelector('input:not([type="hidden"]), select, textarea, button.btn-primary, button.modal-close');
+  const primerControl = capa.querySelector('input:not([type="hidden"]), select, textarea, button.btn-primary, button.modal-close');
   primerControl?.focus();
-  if (onMount) onMount(close);
+  if (onMount) onMount(close, capa);
   return close;
 }
 

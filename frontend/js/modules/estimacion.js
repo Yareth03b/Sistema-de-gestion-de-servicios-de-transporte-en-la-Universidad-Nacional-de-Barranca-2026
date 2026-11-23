@@ -1,7 +1,7 @@
-import { CONFIG } from '../config.js?v=9';
-import { api } from '../api.js?v=9';
-import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js?v=9';
-import { renderSolicitudes, fechaHora } from './solicitudes.js?v=9';
+import { CONFIG } from '../config.js?v=10';
+import { api } from '../api.js?v=10';
+import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js?v=10';
+import { renderSolicitudes, fechaHora } from './solicitudes.js?v=10';
 
 export async function renderEstimacion(container) {
   container.innerHTML = `<div class="tabs-bar">

@@ -1,5 +1,5 @@
-import { api } from '../api.js?v=9';
-import { mesActual, tablaDatos, mostrarErrorFormulario, limitarTabla, formatNumber, openModal, showToast, escapeHtml } from '../utils.js?v=9';
+import { api } from '../api.js?v=10';
+import { mesActual, tablaDatos, mostrarErrorFormulario, limitarTabla, formatNumber, openModal, showToast, escapeHtml } from '../utils.js?v=10';
 
 export async function renderConciliacion(container) {
   const reportes = await api.getConciliacion();
