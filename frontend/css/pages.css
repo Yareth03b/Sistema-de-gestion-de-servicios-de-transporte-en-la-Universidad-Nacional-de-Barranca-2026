@@ -206,6 +206,44 @@
 }
 
 /* Solicitudes de viaje */
+.estimacion-acciones {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.modal-card:has(.comparacion-buses) { max-width: 1000px; }
+.comparacion-buses > * + * { margin-top: var(--space-4); }
+.comparacion-buses small {
+  display: block;
+  color: var(--text-secondary);
+}
+.comparacion-buses ul { padding-left: var(--space-4); }
+.comparacion-buses td > :is(ul, .btn, .pill-success) { margin-top: var(--space-2); }
+.comparacion-buses td > .btn { display: block; }
+.comparacion-buses .bus-no-disponible td {
+  color: var(--text-secondary);
+  background: var(--bg-surface-hover);
+}
+
+@media (max-width: 640px) {
+  .comparacion-buses thead { position: absolute; clip-path: inset(50%); }
+  .comparacion-buses tr { display: block; border-bottom: 1px solid var(--border-divider); }
+  .comparacion-buses .data-table td {
+    display: block;
+    padding: var(--space-1) var(--space-3);
+    border: 0;
+  }
+  .comparacion-buses td:first-child { padding-top: var(--space-3); }
+  .comparacion-buses td:last-child { padding-bottom: var(--space-3); }
+  .comparacion-buses td[data-label]::before {
+    content: attr(data-label) ' · ';
+    color: var(--text-secondary);
+  }
+}
+
 .solicitud-acciones {
   display: grid;
   grid-template-columns: repeat(2, max-content);
