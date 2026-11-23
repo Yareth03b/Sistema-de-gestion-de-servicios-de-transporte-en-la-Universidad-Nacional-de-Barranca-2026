@@ -84,6 +84,7 @@ CREATE TABLE BitacoraTurno (
     km_recorridos AS (km_final - km_inicial),
     observaciones VARCHAR(300) NULL,
     CONSTRAINT CK_BitacoraTurno_Km CHECK (km_final > km_inicial),
+    CONSTRAINT CK_BitacoraTurno_Horas CHECK (hora_llegada > hora_salida),
     CONSTRAINT FK_BitacoraTurno_Unidad
         FOREIGN KEY (id_unidad) REFERENCES UnidadTransporte(id_unidad),
     CONSTRAINT FK_BitacoraTurno_Conductor
@@ -173,8 +174,11 @@ CREATE TABLE Mantenimiento (
     tipo             VARCHAR(20) NOT NULL,
     detalle          VARCHAR(300) NULL,
     foto             VARCHAR(260) NULL,
+    fecha_salida     DATE NULL,
     CONSTRAINT FK_Mantenimiento_Unidad
-        FOREIGN KEY (id_unidad) REFERENCES UnidadTransporte(id_unidad)
+        FOREIGN KEY (id_unidad) REFERENCES UnidadTransporte(id_unidad),
+    CONSTRAINT CK_Mantenimiento_Salida
+        CHECK (fecha_salida IS NULL OR fecha_salida >= fecha)
 );
 GO
 
@@ -199,9 +203,38 @@ CREATE TABLE Incidente (
 );
 GO
 
+CREATE TABLE SolicitudViaje (
+    id_solicitud      INT IDENTITY(1,1) PRIMARY KEY,
+    codigo            VARCHAR(30)  NOT NULL,
+    id_area           INT          NOT NULL,
+    encargado         VARCHAR(100) NOT NULL,
+    fecha_salida      DATE         NOT NULL,
+    hora_salida       TIME(0)      NOT NULL,
+    fecha_regreso     DATE         NOT NULL,
+    hora_regreso      TIME(0)      NOT NULL,
+    lugar_procedencia VARCHAR(100) NOT NULL,
+    lugar_destino     VARCHAR(100) NOT NULL,
+    motivo            VARCHAR(300) NOT NULL,
+    pasajeros         INT          NOT NULL,
+    estado            VARCHAR(20)  NOT NULL
+        CONSTRAINT DF_SolicitudViaje_Estado DEFAULT 'Pendiente',
+    observaciones     VARCHAR(300) NULL,
+    CONSTRAINT UQ_SolicitudViaje_Codigo UNIQUE (codigo),
+    CONSTRAINT FK_SolicitudViaje_Area
+        FOREIGN KEY (id_area) REFERENCES AreaSolicitante(id_area),
+    CONSTRAINT CK_SolicitudViaje_Pasajeros CHECK (pasajeros > 0),
+    CONSTRAINT CK_SolicitudViaje_Estado
+        CHECK (estado IN ('Pendiente','Estimada','Aprobada','Rechazada')),
+    CONSTRAINT CK_SolicitudViaje_Fechas CHECK (
+        fecha_regreso > fecha_salida
+        OR (fecha_regreso = fecha_salida AND hora_regreso > hora_salida))
+);
+GO
+
 CREATE TABLE EstimacionViaje (
     id_estimacion        INT IDENTITY(1,1) PRIMARY KEY,
     id_unidad            INT NOT NULL,
+    id_solicitud         INT NULL,
     fecha                DATE NOT NULL,
     destino              VARCHAR(100) NOT NULL,
     distancia_km         INT NOT NULL,
@@ -209,7 +242,9 @@ CREATE TABLE EstimacionViaje (
     precio_galon         DECIMAL(8,2) NOT NULL,
     costo_estimado       DECIMAL(10,2) NOT NULL,
     CONSTRAINT FK_EstimacionViaje_Unidad
-        FOREIGN KEY (id_unidad) REFERENCES UnidadTransporte(id_unidad)
+        FOREIGN KEY (id_unidad) REFERENCES UnidadTransporte(id_unidad),
+    CONSTRAINT FK_EstimacionViaje_Solicitud
+        FOREIGN KEY (id_solicitud) REFERENCES SolicitudViaje(id_solicitud)
 );
 GO
 
