@@ -1,6 +1,6 @@
-import { CONFIG } from '../config.js?v=10';
-import { api } from '../api.js?v=10';
-import { tablaDatos, mostrarErrorFormulario, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=10';
+import { CONFIG } from '../config.js?v=11';
+import { api } from '../api.js?v=11';
+import { tablaDatos, mostrarErrorFormulario, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=11';
 
 // Solo al faltar el endpoint: calcula las distancias con el último preventivo por fecha.
 export function proximosPorKilometraje(unidades, mants) {
@@ -20,10 +20,10 @@ export function proximosPorKilometraje(unidades, mants) {
   });
 }
 
-export async function renderMantenimiento(container, searchQuery = '') {
+export async function renderMantenimiento(container, searchQuery = '', param, { filtros = {} } = {}) {
   const [mants, unidades, previstos] = await Promise.all([api.getMantenimientos(), api.getUnidades(), api.getProximosMantenimientos()]);
   const proximos = previstos ?? proximosPorKilometraje(unidades, mants);
-  let filterTipo = 'all';
+  let filterTipo = filtros['mant-tipo'] ?? 'all';
 
   const paint = () => {
     const q = searchQuery.trim().toLowerCase();

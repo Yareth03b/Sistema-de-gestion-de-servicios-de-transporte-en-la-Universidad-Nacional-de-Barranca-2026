@@ -1,29 +1,30 @@
-import { api } from '../api.js?v=10';
-import { mesActual, tablaDatos, limitarTabla, exportarCsv, formatNumber, formatSpaceInt, escapeHtml } from '../utils.js?v=10';
-import { renderCierre } from './cierre.js?v=10';
+import { api } from '../api.js?v=11';
+import { mesActual, tablaDatos, limitarTabla, exportarCsv, formatNumber, formatSpaceInt, escapeHtml } from '../utils.js?v=11';
+import { renderCierre } from './cierre.js?v=11';
 
-export async function renderReportes(container) {
+export async function renderReportes(container, searchQuery, param, { filtros = {}, estado } = {}) {
   container.innerHTML = `<div class="tabs-bar">
     <button class="tab-btn active" data-reporte="unidad">Por unidad</button>
     <button class="tab-btn" data-reporte="cierre">Cierre trimestral</button>
   </div><div class="contenido-reporte"></div>`;
-  const abrir = async tab => {
+  const abrir = async (tab, iniciales = {}) => {
     const vista = document.createElement('div');
     vista.className = 'contenido-reporte';
     container.querySelector('.contenido-reporte').replaceWith(vista);
     container.querySelectorAll('[data-reporte]').forEach(b => b.classList.toggle('active', b.dataset.reporte === tab));
     try {
-      if (tab === 'cierre') await renderCierre(vista);
-      else await renderPorUnidad(vista);
+      if (tab === 'cierre') await renderCierre(vista, iniciales);
+      else await renderPorUnidad(vista, iniciales);
     } catch (err) {
       if (vista.isConnected) vista.textContent = err.message;
     }
   };
   container.querySelectorAll('[data-reporte]').forEach(b => { b.onclick = () => abrir(b.dataset.reporte); });
-  await abrir('unidad');
+  await abrir(estado?.tab ?? 'unidad', filtros);
+  return { estado: () => ({ tab: container.querySelector('.tab-btn.active').dataset.reporte }) };
 }
 
-async function renderPorUnidad(container) {
+async function renderPorUnidad(container, filtros) {
   const unidades = await api.getUnidades(true);
   if (!container.isConnected) return;
   container.innerHTML = `<section class="card">
@@ -37,6 +38,9 @@ async function renderPorUnidad(container) {
   const mes = container.querySelector('[name=mes]');
   const dias = container.querySelector('[name=dias]');
   const unidad = container.querySelector('[name=unidad]');
+  mes.value = filtros.mes ?? mes.value;
+  dias.value = filtros.dias ?? dias.value;
+  unidad.value = filtros.unidad ?? '';
   let solicitud = 0;
   const consultar = async () => {
     const actual = ++solicitud;

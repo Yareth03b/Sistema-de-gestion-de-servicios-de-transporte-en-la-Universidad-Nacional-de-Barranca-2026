@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=10';
-import { showToast } from './utils.js?v=10';
+import { CONFIG } from './config.js?v=11';
+import { showToast } from './utils.js?v=11';
 
 let apiOnline = false;
 
@@ -19,14 +19,17 @@ function setApiStatus(online) {
   }
 }
 
-async function request(path, options = {}) {
+async function request(path, { signal, ...options } = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT_MS);
+  const abortar = () => controller.abort();
+  if (signal?.aborted) abortar();
+  else signal?.addEventListener('abort', abortar, { once: true });
+  const timer = setTimeout(abortar, CONFIG.REQUEST_TIMEOUT_MS);
   try {
     const res = await fetch(`${CONFIG.API_BASE_URL}${path}`, {
       headers: options.body ? { 'Content-Type': 'application/json' } : {},
-      signal: controller.signal,
       ...options,
+      signal: controller.signal,
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -42,6 +45,7 @@ async function request(path, options = {}) {
     const body = await res.text();
     return body ? JSON.parse(body) : null;
   } catch (err) {
+    if (signal?.aborted) throw err;
     if (err.name === 'AbortError' || err instanceof TypeError) {
       setApiStatus(false);
       err = new Error('No se pudo conectar con la API. Vuelve a intentarlo.');
@@ -49,6 +53,7 @@ async function request(path, options = {}) {
     throw err;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abortar);
   }
 }
 
@@ -76,8 +81,8 @@ export const api = {
   },
 
   // --- Turnos ---
-  async getTurnos() {
-    return request('/turnos');
+  async getTurnos(signal) {
+    return request('/turnos', { signal });
   },
 
   async saveTurno(payload, id = null) {

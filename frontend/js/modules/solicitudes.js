@@ -1,6 +1,6 @@
-import { api } from '../api.js?v=10';
-import { campoArea, altaArea, prepararArea } from './areas.js?v=10';
-import { escapeHtml, formatDateES, formatHora, limitarTabla, mostrarErrorFormulario, openModal, showToast } from '../utils.js?v=10';
+import { api } from '../api.js?v=11';
+import { campoArea, altaArea, prepararArea } from './areas.js?v=11';
+import { escapeHtml, formatDateES, formatHora, limitarTabla, mostrarErrorFormulario, openModal, showToast } from '../utils.js?v=11';
 
 const coloresEstado = { Pendiente: 'urgent', Estimada: 'info', Aprobada: 'success', Rechazada: 'danger' };
 
@@ -8,7 +8,7 @@ export function fechaHora(fecha, hora) {
   return formatDateES(fecha) + ' ' + formatHora(hora);
 }
 
-export async function renderSolicitudes(container, estimar) {
+export async function renderSolicitudes(container, estimar, estado = '') {
   const { areas } = await api.getRutasYCostos();
   if (!container.isConnected) return;
   container.innerHTML = `<section class="card">
@@ -20,6 +20,7 @@ export async function renderSolicitudes(container, estimar) {
     </select></label></div>
     <div data-lista aria-live="polite"></div></section>`;
   const filtro = container.querySelector('[name=estado]');
+  filtro.value = estado;
   const consultar = async () => {
     const lista = document.createElement('div');
     lista.dataset.lista = '';

@@ -1,9 +1,9 @@
-import { CONFIG } from '../config.js?v=10';
-import { getSession } from './auth.js?v=10';
-import { api } from '../api.js?v=10';
-import { tablaDatos, formatHora, formatNumber, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=10';
+import { CONFIG } from '../config.js?v=11';
+import { getSession } from './auth.js?v=11';
+import { api } from '../api.js?v=11';
+import { tablaDatos, formatHora, formatNumber, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=11';
 
-import { abrirSalida, proximosPorKilometraje } from './mantenimiento.js?v=10';
+import { abrirSalida, proximosPorKilometraje } from './mantenimiento.js?v=11';
 
 function vencimiento(doc) {
   if (!doc || doc.dias_para_vencer == null) return 'Sin vencimiento registrado';
@@ -24,7 +24,7 @@ function estadoUnidad(u) {
     ${u.en_taller ? `<span>Días en taller: ${formatSpaceInt(u.dias_en_taller)}</span>` : ''}`;
 }
 
-export async function renderUnidades(container, searchQuery = '', unidadIdParam = null) {
+export async function renderUnidades(container, searchQuery = '', unidadIdParam = null, { estado } = {}) {
   const unidades = await api.getUnidades(true);
   let fichaSolicitada = 0;
 
@@ -100,7 +100,7 @@ export async function renderUnidades(container, searchQuery = '', unidadIdParam 
     });
   };
 
-  const openHistorial = async (idUnidad) => {
+  const openHistorial = async (idUnidad, tab = container.querySelector('[data-hist-tab].active')?.dataset.histTab) => {
     const solicitud = ++fichaSolicitada;
     let hist;
     try {
@@ -210,6 +210,7 @@ export async function renderUnidades(container, searchQuery = '', unidadIdParam 
         });
       };
     });
+    if (tab) container.querySelector(`[data-hist-tab="${tab}"]`)?.click();
     document.getElementById('back-unidades').addEventListener('click', () => {
       if (window.location.hash.startsWith('#/unidades/')) {
         window.location.hash = '#/unidades';
@@ -394,9 +395,10 @@ export async function renderUnidades(container, searchQuery = '', unidadIdParam 
   };
 
   if (unidadIdParam && Number.isFinite(Number(unidadIdParam))) {
-    openHistorial(Number(unidadIdParam));
+    await openHistorial(Number(unidadIdParam), estado?.tab);
   } else {
     paintList();
   }
-  return { onPrimaryAction: () => openUnidadModal(null) };
+  return { onPrimaryAction: () => openUnidadModal(null),
+    estado: () => ({ tab: container.querySelector('[data-hist-tab].active')?.dataset.histTab }) };
 }

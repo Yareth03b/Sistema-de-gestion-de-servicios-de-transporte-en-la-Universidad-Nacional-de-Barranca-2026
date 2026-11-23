@@ -1,17 +1,17 @@
-import { api } from './api.js?v=10';
-import { CONFIG } from './config.js?v=10';
-import { formatDateES, showToast } from './utils.js?v=10';
-import { initAuth, clearSession, getSession } from './modules/auth.js?v=10';
-import { renderDashboard } from './modules/dashboard.js?v=10';
-import { renderTurnos } from './modules/turnos.js?v=10';
-import { renderCombustible } from './modules/combustible.js?v=10';
-import { renderUnidades } from './modules/unidades.js?v=10';
-import { renderMantenimiento } from './modules/mantenimiento.js?v=10';
-import { renderConductores } from './modules/conductores.js?v=10';
-import { renderRutas } from './modules/rutas.js?v=10';
-import { renderReportes } from './modules/reportes.js?v=10';
-import { renderConciliacion } from './modules/conciliacion.js?v=10';
-import { renderEstimacion } from './modules/estimacion.js?v=10';
+import { api } from './api.js?v=11';
+import { CONFIG } from './config.js?v=11';
+import { formatDateES, showToast } from './utils.js?v=11';
+import { initAuth, clearSession, getSession } from './modules/auth.js?v=11';
+import { renderDashboard } from './modules/dashboard.js?v=11';
+import { renderTurnos } from './modules/turnos.js?v=11';
+import { renderCombustible } from './modules/combustible.js?v=11';
+import { renderUnidades } from './modules/unidades.js?v=11';
+import { renderMantenimiento } from './modules/mantenimiento.js?v=11';
+import { renderConductores } from './modules/conductores.js?v=11';
+import { renderRutas } from './modules/rutas.js?v=11';
+import { renderReportes } from './modules/reportes.js?v=11';
+import { renderConciliacion } from './modules/conciliacion.js?v=11';
+import { renderEstimacion } from './modules/estimacion.js?v=11';
 
 const ROUTES = {
   dashboard: { title: 'Inicio', subtitle: () => `Datos al ${formatDateES(CONFIG.REFERENCE_DATE)}`, cta: null, render: renderDashboard },
@@ -28,6 +28,8 @@ const ROUTES = {
 
 let currentRoute = 'dashboard';
 let currentParam = null;
+let cicloVista;
+let accionesVista;
 
 function parseHash(hash = window.location.hash) {
   const clean = hash.replace(/^#\/?/, '').trim();
@@ -39,13 +41,21 @@ function parseHash(hash = window.location.hash) {
   };
 }
 
-async function renderView(route, param = null) {
+async function renderView(route, param = null, conservar = false) {
   if (!ROUTES[route]) {
     route = 'dashboard';
     param = null;
   }
   currentRoute = route;
   currentParam = param;
+  const container = document.getElementById('view-container');
+  const filtros = conservar ? Object.fromEntries([...container.querySelectorAll('.filters-bar :is(input, select)')]
+    .map(campo => [campo.name || campo.id, campo.value])) : {};
+  const estado = conservar ? accionesVista?.estado?.() : null;
+  cicloVista?.abort();
+  cicloVista = new AbortController();
+  const { signal } = cicloVista;
+  accionesVista = null;
   const cfg = ROUTES[route];
 
   document.querySelectorAll('.nav-item').forEach((btn) => {
@@ -63,20 +73,21 @@ async function renderView(route, param = null) {
   const actionsEl = document.getElementById('topbar-actions');
   actionsEl.innerHTML = (cfg.cta && !param) ? `<button id="primary-cta-btn" class="btn btn-primary">${cfg.cta}</button>` : '';
 
-  const container = document.getElementById('view-container');
   const searchVal = document.getElementById('global-search-input').value || '';
   const view = container.cloneNode(false);
   container.replaceWith(view);
   let result;
   try {
-    result = await cfg.render(view, route === 'dashboard' ? navigate : searchVal, param);
+    result = await cfg.render(view, route === 'dashboard' ? navigate : searchVal, param,
+      { signal, filtros, estado });
   } catch (err) {
-    if (!view.isConnected) return;
+    if (signal.aborted) return;
     actionsEl.replaceChildren();
     view.textContent = 'No se pudo cargar la pantalla. ' + err.message;
     return;
   }
-  if (!view.isConnected) return;
+  if (signal.aborted) return;
+  accionesVista = result;
 
   if (cfg.cta && !param && result?.onPrimaryAction) {
     document.getElementById('primary-cta-btn')?.addEventListener('click', result.onPrimaryAction);
@@ -85,14 +96,19 @@ async function renderView(route, param = null) {
   document.getElementById('sidebar').classList.remove('open');
 }
 
+function refrescarVista() {
+  document.getElementById('sidebar').classList.remove('open');
+  if (accionesVista?.actualizar) accionesVista.actualizar();
+  else renderView(currentRoute, currentParam, true);
+}
+
 function navigate(path) {
   const clean = String(path || 'dashboard').replace(/^#\/?/, '').trim();
   const targetHash = '#/' + clean;
   if (window.location.hash !== targetHash) {
     window.location.hash = targetHash;
   } else {
-    const { baseRoute, param } = parseHash(targetHash);
-    renderView(baseRoute, param);
+    refrescarVista();
   }
 }
 
@@ -125,6 +141,8 @@ function showApp(session) {
 }
 
 function showLogin() {
+  cicloVista?.abort();
+  accionesVista = null;
   document.getElementById('app-shell').classList.add('hidden');
   document.getElementById('login-view').classList.remove('hidden');
   document.getElementById('view-container')?.replaceChildren();
@@ -146,22 +164,24 @@ document.addEventListener('DOMContentLoaded', () => {
     handleRouteFromHash();
   });
 
-  document.addEventListener('actualizar-vista', () => {
-    renderView(currentRoute, currentParam);
-  });
+  document.addEventListener('actualizar-vista', refrescarVista);
 
   initAuth(showApp, handleLogout);
 
   document.querySelectorAll('.nav-item').forEach((btn) => {
-    btn.addEventListener('click', () => navigate(btn.dataset.route));
+    btn.addEventListener('click', () => {
+      if (btn.dataset.route === currentRoute) refrescarVista();
+      else navigate(btn.dataset.route);
+    });
   });
 
   document.getElementById('mobile-menu-btn').addEventListener('click', () => {
     document.getElementById('sidebar').classList.toggle('open');
   });
 
-  document.getElementById('global-search-input').addEventListener('input', () => {
-    if (currentRoute !== 'dashboard') renderView(currentRoute, currentParam);
+  document.getElementById('global-search-input').addEventListener('input', e => {
+    if (accionesVista?.buscar) accionesVista.buscar(e.target.value);
+    else if (currentRoute !== 'dashboard') renderView(currentRoute, currentParam, true);
   });
 
   document.getElementById('notif-btn').addEventListener('click', () => navigate('dashboard'));
