@@ -32,10 +32,14 @@ export function mesActual() {
   return CONFIG.REFERENCE_DATE.slice(0, 7);
 }
 
-export function opcionesPeriodo(registros, periodo) {
+export function mesesPeriodo(registros, periodo) {
   const meses = new Set([mesActual(), ...registros.map(r => r.fecha.slice(0, 7))]);
   if (periodo) meses.add(periodo);
-  const opciones = [...meses].sort().reverse().map(m => {
+  return [...meses].sort().reverse();
+}
+
+export function opcionesPeriodo(registros, periodo) {
+  const opciones = mesesPeriodo(registros, periodo).map(m => {
     const [anio, mes] = m.split('-');
     const nombre = new Date(Number(anio), Number(mes) - 1, 1).toLocaleString('es-PE', { month: 'long' });
     return `<option value="${m}" ${m === periodo ? 'selected' : ''}>${nombre[0].toUpperCase() + nombre.slice(1)} ${anio}</option>`;

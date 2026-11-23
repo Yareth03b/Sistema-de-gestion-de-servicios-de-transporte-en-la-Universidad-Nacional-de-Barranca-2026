@@ -1,7 +1,7 @@
 import { falloCampo, campoRegistro, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=11';
 import { CONFIG } from '../config.js?v=11';
 import { api } from '../api.js?v=11';
-import { activarRefresco, mostrarErrorFormulario, errorCampo, formatHora, mesActual, opcionesPeriodo, limitarTabla, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=11';
+import { activarRefresco, mostrarErrorFormulario, errorCampo, formatHora, mesActual, mesesPeriodo, opcionesPeriodo, limitarTabla, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=11';
 
 function firmaTurnos(turnos) {
   return JSON.stringify(turnos.map(t => [t.id_turno, t.id_unidad, t.fecha, t.placa, t.conductor,
@@ -18,7 +18,7 @@ export async function renderTurnos(container, searchQuery = '', param, { signal 
   ]);
   if (signal.aborted) return;
   let turnos = iniciales;
-  let firma = firmaTurnos(turnos);
+  let firmaVisible;
 
   container.innerHTML = `
     <section class="card">
@@ -70,6 +70,16 @@ export async function renderTurnos(container, searchQuery = '', param, { signal 
   const boton = container.querySelector('[data-actualizar]');
   const tabla = container.querySelector('table');
 
+  const actualizarPeriodos = () => {
+    if (document.activeElement === mes || (CSS.supports('selector(select:open)') && mes.matches(':open'))) return;
+    const periodo = mes.value;
+    const meses = mesesPeriodo(turnos, periodo);
+    // La primera opción corresponde a «Todos los periodos».
+    if (mes.options.length !== meses.length + 1 || meses.some((m, i) => mes.options[i + 1].value !== m)) {
+      mes.innerHTML = opcionesPeriodo(turnos, periodo);
+    }
+  };
+
   const pintarFilas = (mantenerExpansion = false) => {
     const filterBus = bus.value;
     const periodo = mes.value;
@@ -83,6 +93,9 @@ export async function renderTurnos(container, searchQuery = '', param, { signal 
       return (!periodo || t.fecha.startsWith(periodo)) && matchBus && matchText;
     });
 
+    const firma = firmaTurnos(filtered);
+    if (mantenerExpansion && firma === firmaVisible) return;
+    firmaVisible = firma;
     const expandida = mantenerExpansion && container.querySelector('.table-footer button')?.getAttribute('aria-expanded') === 'true';
     tabla.tBodies[0].innerHTML = filtered.map((t) => `
       <tr>
@@ -250,12 +263,9 @@ export async function renderTurnos(container, searchQuery = '', param, { signal 
   const actualizar = activarRefresco({
     signal, consultar: api.getTurnos,
     aplicar(datos) {
-      const siguiente = firmaTurnos(datos);
       const previos = turnos;
       turnos = datos; // El formulario de edición también necesita los campos que no aparecen en la tabla.
-      if (siguiente === firma) return;
-      firma = siguiente;
-      mes.innerHTML = opcionesPeriodo(turnos, mes.value);
+      actualizarPeriodos();
       pintarFilas(true);
       const anteriores = new Set(previos.map(t => t.id_turno));
       if (datos.some(t => !anteriores.has(t.id_turno))) showToast('Se actualizaron los turnos');
