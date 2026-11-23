@@ -1,7 +1,45 @@
-import { CONFIG } from '../config.js?v=11';
-import { api } from '../api.js?v=11';
-import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js?v=11';
-import { renderSolicitudes, fechaHora } from './solicitudes.js?v=11';
+import { CONFIG } from '../config.js?v=12';
+import { api } from '../api.js?v=12';
+import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, openModal, showToast, escapeHtml } from '../utils.js?v=12';
+import { renderSolicitudes, fechaHora } from './solicitudes.js?v=12';
+
+const decimal = new Intl.NumberFormat('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function mostrarComparacion({ buses, fecha, pasajeros, fuente_cierre }, parametros, elegir) {
+  const resumen = [formatDateES(fecha)];
+  if (pasajeros != null) resumen.push(`${pasajeros} pasajeros`);
+  resumen.push(`${formatNumber(parametros.distancia_km)} km`, `S/ ${decimal.format(parametros.precio_galon)} por galón`);
+
+  openModal({
+    title: 'Comparar buses',
+    bodyHtml: `<div class="comparacion-buses">
+      <p>${escapeHtml(resumen.join(' · '))}</p>
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Bus</th><th>Capacidad</th><th>Rendimiento (km/gal)</th><th>Costo estimado</th><th>Estado y avisos</th></tr></thead>
+        <tbody>${buses.map(bus => `<tr class="${bus.disponible ? '' : 'bus-no-disponible'}">
+          <td><strong class="plate-badge">${escapeHtml(bus.placa)}</strong>
+            ${bus.mas_economico ? '<span class="pill pill-success">Más económico</span>' : ''}</td>
+          <td data-label="Capacidad">${escapeHtml(bus.capacidad ?? '—')}</td>
+          <td data-label="Rendimiento (km/gal)">${bus.rendimiento == null ? '—' : decimal.format(bus.rendimiento)}
+            ${bus.fuente_rendimiento ? `<small>${escapeHtml(bus.fuente_rendimiento)}</small>` : ''}</td>
+          <td data-label="Costo estimado">${bus.costo_estimado == null ? '—' : 'S/ ' + decimal.format(bus.costo_estimado)}</td>
+          <td><span class="pill ${bus.disponible ? 'pill-info' : 'pill-danger'}">${bus.disponible ? 'Disponible' : 'No disponible'}</span>
+            ${bus.avisos.length ? `<ul>${bus.avisos.map(aviso => `<li>${escapeHtml(aviso)}</li>`).join('')}</ul>` : ''}
+            ${bus.disponible && bus.rendimiento > 0 ? `<button type="button" class="btn btn-outline btn-sm" data-usar="${bus.id_unidad}">Usar este bus</button>` : ''}</td>
+        </tr>`).join('') || '<tr><td colspan="5">No hay buses activos para comparar.</td></tr>'}</tbody>
+      </table></div>
+      ${fuente_cierre == null ? '<p class="card-meta">Aún no hay cierre del trimestre anterior; el rendimiento se calcula con los vales de los últimos 3 meses.</p>' : ''}
+    </div>`,
+    onMount(close, capa) {
+      capa.querySelectorAll('[data-usar]').forEach(boton => {
+        boton.onclick = () => {
+          elegir(buses.find(bus => bus.id_unidad === Number(boton.dataset.usar)));
+          close();
+        };
+      });
+    },
+  });
+}
 
 export async function renderEstimacion(container, searchQuery, param, { filtros = {}, estado } = {}) {
   container.innerHTML = `<div class="tabs-bar">
@@ -101,9 +139,10 @@ async function renderCalculadora(container, solicitud, alGuardar, borrador) {
           </div>
           <div class="field-group">
             <label class="field-label">Costo estimado</label>
-            <div id="est-preview" class="input" style="display:flex;align-items:center;font-weight:700;color:var(--brand-primary);background:var(--brand-soft);">S/ 326.56</div>
+            <div id="est-preview" class="input" style="display:flex;align-items:center;font-weight:700;color:var(--brand-primary);background:var(--brand-soft);"></div>
           </div>
-          <div style="grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:8px;">
+          <div class="estimacion-acciones">
+            <button type="button" class="btn btn-outline" data-comparar>Comparar buses</button>
             <button type="submit" class="btn btn-primary">Guardar estimación</button>
           </div>
         </form>
@@ -158,7 +197,7 @@ async function renderCalculadora(container, solicitud, alGuardar, borrador) {
       return null;
     }
     const costo = (km / rend) * precio;
-    previewEl.textContent = `S/ ${formatNumber(costo, 2)}`;
+    previewEl.textContent = `S/ ${decimal.format(costo)}`;
     return +costo.toFixed(2);
   };
 
@@ -177,6 +216,39 @@ async function renderCalculadora(container, solicitud, alGuardar, borrador) {
   });
 
   prepararCampos(form);
+  const comparar = form.querySelector('[data-comparar]');
+  comparar.onclick = async () => {
+    const { fecha, id_unidad } = form.elements;
+    if (!kmEl.reportValidity() || !precioEl.reportValidity() || (!solicitud && !fecha.reportValidity())) return;
+    const parametros = {
+      distancia_km: kmEl.valueAsNumber, precio_galon: precioEl.valueAsNumber,
+      ...(solicitud ? { id_solicitud: solicitud.id_solicitud } : { fecha: fecha.value }),
+    };
+    comparar.disabled = true;
+    comparar.textContent = 'Comparando…';
+    try {
+      const resultado = await api.compararBuses(parametros);
+      if (!form.isConnected) return;
+      if (kmEl.valueAsNumber !== parametros.distancia_km || precioEl.valueAsNumber !== parametros.precio_galon ||
+          (!solicitud && fecha.value !== parametros.fecha)) {
+        showToast('Los datos del viaje cambiaron. Vuelve a comparar los buses.');
+        return;
+      }
+      mostrarComparacion(resultado, parametros, bus => {
+        if (![...id_unidad.options].some(o => o.value === String(bus.id_unidad))) {
+          id_unidad.add(new Option(bus.placa + ' · Bus', bus.id_unidad));
+        }
+        id_unidad.value = String(bus.id_unidad);
+        rendEl.value = bus.rendimiento;
+        for (const campo of [id_unidad, rendEl]) campo.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    } catch (err) {
+      if (form.isConnected) showToast(err.message, 'error');
+    } finally {
+      comparar.disabled = false;
+      comparar.textContent = 'Comparar buses';
+    }
+  };
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);

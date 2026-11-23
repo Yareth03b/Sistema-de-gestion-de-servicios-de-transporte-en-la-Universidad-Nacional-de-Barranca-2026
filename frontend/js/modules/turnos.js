@@ -1,7 +1,7 @@
-import { falloCampo, campoRegistro, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=11';
-import { CONFIG } from '../config.js?v=11';
-import { api } from '../api.js?v=11';
-import { activarRefresco, mostrarErrorFormulario, errorCampo, formatHora, mesActual, mesesPeriodo, opcionesPeriodo, limitarTabla, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=11';
+import { falloCampo, campoRegistro, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=12';
+import { CONFIG } from '../config.js?v=12';
+import { api } from '../api.js?v=12';
+import { activarRefresco, mostrarErrorFormulario, errorCampo, formatHora, mesActual, mesesPeriodo, opcionesPeriodo, limitarTabla, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=12';
 
 function firmaTurnos(turnos) {
   return JSON.stringify(turnos.map(t => [t.id_turno, t.id_unidad, t.fecha, t.placa, t.conductor,

@@ -1,6 +1,6 @@
-import { api } from '../api.js?v=11';
-import { campoArea, altaArea, prepararArea } from './areas.js?v=11';
-import { escapeHtml, formatDateES, formatHora, limitarTabla, mostrarErrorFormulario, openModal, showToast } from '../utils.js?v=11';
+import { api } from '../api.js?v=12';
+import { campoArea, altaArea, prepararArea } from './areas.js?v=12';
+import { escapeHtml, formatDateES, formatHora, limitarTabla, mostrarErrorFormulario, openModal, showToast } from '../utils.js?v=12';
 
 const coloresEstado = { Pendiente: 'urgent', Estimada: 'info', Aprobada: 'success', Rechazada: 'danger' };
 
