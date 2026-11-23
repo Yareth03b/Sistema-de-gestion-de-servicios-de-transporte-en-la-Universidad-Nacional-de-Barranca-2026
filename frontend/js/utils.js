@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js?v=10';
+import { CONFIG } from './config.js?v=11';
 
 export function formatNumber(n, decimals = 0) {
   if (n == null || !Number.isFinite(Number(n))) return '—';
@@ -32,9 +32,14 @@ export function mesActual() {
   return CONFIG.REFERENCE_DATE.slice(0, 7);
 }
 
-export function opcionesPeriodo(registros, periodo) {
+export function mesesPeriodo(registros, periodo) {
   const meses = new Set([mesActual(), ...registros.map(r => r.fecha.slice(0, 7))]);
-  const opciones = [...meses].sort().reverse().map(m => {
+  if (periodo) meses.add(periodo);
+  return [...meses].sort().reverse();
+}
+
+export function opcionesPeriodo(registros, periodo) {
+  const opciones = mesesPeriodo(registros, periodo).map(m => {
     const [anio, mes] = m.split('-');
     const nombre = new Date(Number(anio), Number(mes) - 1, 1).toLocaleString('es-PE', { month: 'long' });
     return `<option value="${m}" ${m === periodo ? 'selected' : ''}>${nombre[0].toUpperCase() + nombre.slice(1)} ${anio}</option>`;
@@ -60,7 +65,7 @@ export function exportarCsv(nombre, filas) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function limitarTabla(tabla, total) {
+export function limitarTabla(tabla, total, mostrarTodos = false) {
   const filas = Array.from(tabla.tBodies[0].rows);
   const pie = document.createElement('div');
   pie.className = 'table-footer';
@@ -81,7 +86,7 @@ export function limitarTabla(tabla, total) {
   if (contenedor.nextElementSibling?.classList.contains('table-footer')) contenedor.nextElementSibling.remove();
   contenedor.after(pie);
   boton.onclick = () => mostrar(boton.getAttribute('aria-expanded') !== 'true');
-  mostrar(false);
+  mostrar(mostrarTodos);
 }
 
 export function escapeHtml(str) {
@@ -170,6 +175,40 @@ export function mostrarErrorFormulario(form, err, campo) {
 
 const modales = [];
 
+export function activarRefresco({ signal, consultar, aplicar, indicarCarga }) {
+  const disponible = () => !signal.aborted && !document.hidden && !modales.length;
+  let consultando = false;
+  let repetir = false;
+  const actualizar = async () => {
+    if (consultando || !disponible()) return;
+    consultando = true;
+    indicarCarga(true);
+    try {
+      const datos = await consultar(signal);
+      if (disponible() && !repetir) aplicar(datos);
+    } catch (err) {
+      if (disponible()) showToast(err.message, 'error');
+    } finally {
+      consultando = false;
+      if (!signal.aborted) indicarCarga(false);
+      if (repetir) {
+        repetir = false;
+        actualizar();
+      }
+    }
+  };
+  window.addEventListener('focus', actualizar, { signal });
+  document.addEventListener('visibilitychange', actualizar, { signal });
+  document.addEventListener('modales-cerrados', () => {
+    // Una consulta iniciada antes de guardar el formulario puede traer datos anteriores.
+    if (consultando) repetir = true;
+    else actualizar();
+  }, { signal });
+  const intervalo = setInterval(actualizar, 30000);
+  signal.addEventListener('abort', () => clearInterval(intervalo), { once: true });
+  return actualizar;
+}
+
 if (typeof window !== 'undefined') {
   if (window.history.state?.modal) {
     window.history.replaceState(null, '');
@@ -177,6 +216,7 @@ if (typeof window !== 'undefined') {
 
   window.addEventListener('popstate', e => {
     const profundidad = Number(e.state?.modal || 0);
+    const habiaModal = modales.length > 0;
     while (modales.length > profundidad) {
       const { capa, foco, onClose } = modales.pop();
       capa.remove();
@@ -184,6 +224,7 @@ if (typeof window !== 'undefined') {
       if (foco?.isConnected) foco.focus();
       onClose?.();
     }
+    if (habiaModal && !modales.length) document.dispatchEvent(new Event('modales-cerrados'));
     // Adelante o una recarga pueden volver a una entrada cuyo formulario ya se cerró.
     if (profundidad > modales.length) window.history.replaceState(null, '');
   });

@@ -1,14 +1,16 @@
-import { CONFIG } from '../config.js?v=10';
-import { api } from '../api.js?v=10';
-import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js?v=10';
-import { renderSolicitudes, fechaHora } from './solicitudes.js?v=10';
+import { CONFIG } from '../config.js?v=11';
+import { api } from '../api.js?v=11';
+import { prepararCampos, mostrarErrorFormulario, limitarTabla, esBus, formatDateES, formatNumber, showToast, escapeHtml } from '../utils.js?v=11';
+import { renderSolicitudes, fechaHora } from './solicitudes.js?v=11';
 
-export async function renderEstimacion(container) {
+export async function renderEstimacion(container, searchQuery, param, { filtros = {}, estado } = {}) {
   container.innerHTML = `<div class="tabs-bar">
     <button type="button" class="tab-btn" data-vista="solicitudes">Solicitudes</button>
     <button type="button" class="tab-btn" data-vista="calculadora">Calculadora</button>
   </div><div data-contenido></div>`;
-  const abrir = async (vista, solicitud = null) => {
+  let vinculada;
+  const abrir = async (vista, solicitud = null, borrador = null, estadoSolicitud = '') => {
+    vinculada = solicitud;
     const contenido = document.createElement('div');
     contenido.dataset.contenido = '';
     container.querySelector('[data-contenido]').replaceWith(contenido);
@@ -19,8 +21,8 @@ export async function renderEstimacion(container) {
     });
     contenido.textContent = 'Cargando…';
     try {
-      if (vista === 'solicitudes') await renderSolicitudes(contenido, s => abrir('calculadora', s));
-      else await renderCalculadora(contenido, solicitud, () => abrir(solicitud ? 'solicitudes' : 'calculadora'));
+      if (vista === 'solicitudes') await renderSolicitudes(contenido, s => abrir('calculadora', s), estadoSolicitud);
+      else await renderCalculadora(contenido, solicitud, () => abrir(solicitud ? 'solicitudes' : 'calculadora'), borrador);
     } catch (err) {
       contenido.textContent = err.message;
     }
@@ -28,10 +30,15 @@ export async function renderEstimacion(container) {
   container.querySelectorAll('[data-vista]').forEach(b => {
     b.onclick = () => { if (!b.classList.contains('active')) abrir(b.dataset.vista); };
   });
-  await abrir('solicitudes');
+  await abrir(estado?.tab ?? 'solicitudes', estado?.solicitud, estado?.borrador, filtros.estado);
+  return { estado() {
+    const form = container.querySelector('#est-form');
+    return { tab: container.querySelector('.tab-btn.active').dataset.vista, solicitud: vinculada,
+      borrador: form ? Object.fromEntries(new FormData(form)) : null };
+  } };
 }
 
-async function renderCalculadora(container, solicitud, alGuardar) {
+async function renderCalculadora(container, solicitud, alGuardar, borrador) {
   const [unidades, rutasYCostos, historial] = await Promise.all([
     api.getUnidades(),
     api.getRutasYCostos(),
@@ -71,7 +78,7 @@ async function renderCalculadora(container, solicitud, alGuardar) {
           </div>
           <div class="field-group">
             <label class="field-label">Ruta sugerida (opcional)</label>
-            <select id="est-ruta-preset" class="select">
+            <select name="ruta_sugerida" id="est-ruta-preset" class="select">
               <option value="">Personalizado</option>
               ${rutas.map((r) => `<option value="${r.km_referencia}" data-dest="${escapeHtml(r.punto_llegada)}">${escapeHtml(r.punto_salida)} → ${escapeHtml(r.punto_llegada)} (${r.km_referencia} km)</option>`).join('')}
             </select>
@@ -155,6 +162,8 @@ async function renderCalculadora(container, solicitud, alGuardar) {
     return +costo.toFixed(2);
   };
 
+  const form = document.getElementById('est-form');
+  for (const [nombre, valor] of Object.entries(borrador || {})) form.elements[nombre].value = valor;
   calc();
   [kmEl, rendEl, precioEl].forEach((el) => el.addEventListener('input', calc));
 
@@ -167,7 +176,6 @@ async function renderCalculadora(container, solicitud, alGuardar) {
     }
   });
 
-  const form = document.getElementById('est-form');
   prepararCampos(form);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();

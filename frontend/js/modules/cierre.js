@@ -1,15 +1,15 @@
-import { api } from '../api.js?v=10';
-import { CONFIG } from '../config.js?v=10';
-import { formatDateES, formatSpaceInt, formatNumber, tablaDatos, exportarCsv, openModal, showToast } from '../utils.js?v=10';
+import { api } from '../api.js?v=11';
+import { CONFIG } from '../config.js?v=11';
+import { formatDateES, formatSpaceInt, formatNumber, tablaDatos, exportarCsv, openModal, showToast } from '../utils.js?v=11';
 
 export const trimestres = ['I', 'II', 'III', 'IV'];
 
-export async function renderCierre(container) {
+export async function renderCierre(container, filtros = {}) {
   let cierres = await api.getCierres();
   const hoy = CONFIG.REFERENCE_DATE;
   const actual = Number(hoy.slice(0, 4));
-  let anio = actual;
-  let trimestre = Math.ceil(Number(hoy.slice(5, 7)) / 3);
+  let anio = Number(filtros.anio) || actual;
+  let trimestre = Number(filtros.trimestre) || Math.ceil(Number(hoy.slice(5, 7)) / 3);
 
   const paint = () => {
     if (!container.isConnected) return;
