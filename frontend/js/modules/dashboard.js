@@ -1,7 +1,7 @@
-import { api } from '../api.js?v=9';
-import { CONFIG } from '../config.js?v=9';
+import { api } from '../api.js?v=10';
+import { CONFIG } from '../config.js?v=10';
 
-import { esBus, rendimientoPeriodo, rendimientoFlota, formatNumber, formatSpaceInt, formatDateES, escapeHtml } from '../utils.js?v=9';
+import { esBus, rendimientoPeriodo, rendimientoFlota, formatNumber, formatSpaceInt, formatDateES, escapeHtml } from '../utils.js?v=10';
 
 export async function renderDashboard(container, navigate) {
   let mantenimientoError = '';
