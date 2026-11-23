@@ -1,25 +1,81 @@
-import { falloCampo, campoRegistro, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=10';
-import { CONFIG } from '../config.js?v=10';
-import { api } from '../api.js?v=10';
-import { mostrarErrorFormulario, errorCampo, formatHora, mesActual, opcionesPeriodo, limitarTabla, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=10';
+import { falloCampo, campoRegistro, validarRegistro, confirmarPeriodo } from '../validaciones.js?v=11';
+import { CONFIG } from '../config.js?v=11';
+import { api } from '../api.js?v=11';
+import { activarRefresco, mostrarErrorFormulario, errorCampo, formatHora, mesActual, opcionesPeriodo, limitarTabla, esBus, formatDateES, formatSpaceInt, openModal, showToast, escapeHtml } from '../utils.js?v=11';
 
-export async function renderTurnos(container, searchQuery = '') {
-  const [turnos, unidades, conductores, rutas] = await Promise.all([
-    api.getTurnos(),
+function firmaTurnos(turnos) {
+  return JSON.stringify(turnos.map(t => [t.id_turno, t.id_unidad, t.fecha, t.placa, t.conductor,
+    t.ruta_texto, t.hora_salida, t.hora_llegada, t.km_inicial, t.km_final]));
+}
+
+export async function renderTurnos(container, searchQuery = '', param, { signal }) {
+  const [iniciales, unidades, conductores, rutas, abasts] = await Promise.all([
+    api.getTurnos(signal),
     api.getUnidades(true),
     api.getConductores(),
-    api.getRutasYCostos().then((r) => r.rutas),
+    api.getRutasYCostos().then(r => r.rutas),
+    api.getAbastecimientos(),
   ]);
+  if (signal.aborted) return;
+  let turnos = iniciales;
+  let firma = firmaTurnos(turnos);
 
-  let filterBus = 'all';
-  let filterText = searchQuery;
+  container.innerHTML = `
+    <section class="card">
+      <div class="filters-bar">
+        <div class="field-group">
+          <label class="field-label" for="filtro-periodo">Periodo</label>
+          <select id="filtro-periodo" class="select">
+            ${opcionesPeriodo(turnos, mesActual())}
+          </select>
+        </div>
+        <div class="field-group">
+          <label class="field-label" for="turno-bus">Bus</label>
+          <select id="turno-bus" class="select">
+            <option value="all">Todos los buses</option>
+            ${unidades.map((u) => `<option value="${u.id_unidad}">${escapeHtml(u.placa)} (${escapeHtml(u.tipo)})</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-group" style="flex:1;min-width:220px;">
+          <label class="field-label" for="turno-search">Buscar</label>
+          <input id="turno-search" class="input" type="search" placeholder="Buscar conductor o ruta" value="${escapeHtml(searchQuery)}" />
+        </div>
+        <button type="button" class="btn btn-outline" data-actualizar>Actualizar</button>
+      </div>
 
-  const abasts = await api.getAbastecimientos();
-  let periodo = mesActual();
-  const paint = () => {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>FECHA</th>
+              <th>BUS</th>
+              <th>CONDUCTOR</th>
+              <th>RUTAS</th>
+              <th>HORARIO</th>
+              <th class="num-right">KM INICIAL</th>
+              <th class="num-right">KM FINAL</th>
+              <th class="num-right">RECORRIDO (km)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  `;
+
+  const mes = container.querySelector('#filtro-periodo');
+  const bus = container.querySelector('#turno-bus');
+  const buscar = container.querySelector('#turno-search');
+  const boton = container.querySelector('[data-actualizar]');
+  const tabla = container.querySelector('table');
+
+  const pintarFilas = (mantenerExpansion = false) => {
+    const filterBus = bus.value;
+    const periodo = mes.value;
+    const q = buscar.value.trim().toLowerCase();
     const filtered = turnos.filter((t) => {
       const matchBus = filterBus === 'all' || String(t.id_unidad) === filterBus;
-      const q = filterText.trim().toLowerCase();
       const matchText = !q ||
         t.placa.toLowerCase().includes(q) ||
         t.conductor.toLowerCase().includes(q) ||
@@ -27,82 +83,26 @@ export async function renderTurnos(container, searchQuery = '') {
       return (!periodo || t.fecha.startsWith(periodo)) && matchBus && matchText;
     });
 
-    if (!container.isConnected) return;
-
-    container.innerHTML = `
-      <section class="card">
-        <div class="filters-bar">
-          <div class="field-group">
-            <label class="field-label" for="filtro-periodo">Periodo</label>
-            <select id="filtro-periodo" class="select">
-              ${opcionesPeriodo(turnos, periodo)}
-            </select>
-          </div>
-          <div class="field-group">
-            <label class="field-label" for="turno-bus">Bus</label>
-            <select id="turno-bus" class="select">
-              <option value="all">Todos los buses</option>
-              ${unidades.map((u) => `<option value="${u.id_unidad}" ${filterBus === String(u.id_unidad) ? 'selected' : ''}>${escapeHtml(u.placa)} (${escapeHtml(u.tipo)})</option>`).join('')}
-            </select>
-          </div>
-          <div class="field-group" style="flex:1;min-width:220px;">
-            <label class="field-label" for="turno-search">Buscar</label>
-            <input id="turno-search" class="input" type="search" placeholder="Buscar conductor o ruta" value="${escapeHtml(filterText)}" />
-          </div>
-        </div>
-
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>FECHA</th>
-                <th>BUS</th>
-                <th>CONDUCTOR</th>
-                <th>RUTAS</th>
-                <th>HORARIO</th>
-                <th class="num-right">KM INICIAL</th>
-                <th class="num-right">KM FINAL</th>
-                <th class="num-right">RECORRIDO (km)</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${filtered.map((t) => `
-                <tr>
-                  <td>${formatDateES(t.fecha)}</td>
-                  <td><span class="plate-badge">${escapeHtml(t.placa)}</span></td>
-                  <td>${escapeHtml(t.conductor)}</td>
-                  <td>${escapeHtml(t.ruta_texto)}</td>
-                  <td>${escapeHtml(formatHora(t.hora_salida))} – ${escapeHtml(formatHora(t.hora_llegada))}</td>
-                  <td class="num-right">${formatSpaceInt(t.km_inicial)}</td>
-                  <td class="num-right">${formatSpaceInt(t.km_final)}</td>
-                  <td class="num-right"><strong>${formatSpaceInt(t.km_final - t.km_inicial)}</strong></td>
-                  <td><button class="btn-link" data-edit-turno="${t.id_turno}">Editar</button></td>
-                </tr>
-              `).join('') || `<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">No se encontraron turnos registrados.</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    `;
-
-    limitarTabla(container.querySelector('table'), filtered.length);
-    document.getElementById('filtro-periodo').onchange = e => { periodo = e.target.value; paint(); };
-    document.getElementById('turno-bus').addEventListener('change', (e) => {
-      filterBus = e.target.value;
-      paint();
-    });
-    document.getElementById('turno-search').addEventListener('input', (e) => {
-      filterText = e.target.value;
-      paint();
-      document.getElementById('turno-search').focus();
-    });
-    container.querySelectorAll('[data-edit-turno]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const item = turnos.find((x) => x.id_turno === Number(btn.dataset.editTurno));
-        openTurnoModal(item);
-      });
-    });
+    const expandida = mantenerExpansion && container.querySelector('.table-footer button')?.getAttribute('aria-expanded') === 'true';
+    tabla.tBodies[0].innerHTML = filtered.map((t) => `
+      <tr>
+        <td>${formatDateES(t.fecha)}</td>
+        <td><span class="plate-badge">${escapeHtml(t.placa)}</span></td>
+        <td>${escapeHtml(t.conductor)}</td>
+        <td>${escapeHtml(t.ruta_texto)}</td>
+        <td>${escapeHtml(formatHora(t.hora_salida))} – ${escapeHtml(formatHora(t.hora_llegada))}</td>
+        <td class="num-right">${formatSpaceInt(t.km_inicial)}</td>
+        <td class="num-right">${formatSpaceInt(t.km_final)}</td>
+        <td class="num-right"><strong>${formatSpaceInt(t.km_final - t.km_inicial)}</strong></td>
+        <td><button class="btn-link" data-edit-turno="${t.id_turno}">Editar</button></td>
+      </tr>
+    `).join('') || `<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);">No se encontraron turnos registrados.</td></tr>`;
+    limitarTabla(tabla, filtered.length, expandida);
+  };
+  mes.onchange = bus.onchange = buscar.oninput = () => pintarFilas();
+  tabla.onclick = e => {
+    const editar = e.target.closest('[data-edit-turno]');
+    if (editar) openTurnoModal(turnos.find(t => t.id_turno === Number(editar.dataset.editTurno)));
   };
 
   const openTurnoModal = (existing = null) => {
@@ -238,7 +238,6 @@ export async function renderTurnos(container, searchQuery = '') {
             showToast(existing ? 'Turno actualizado.' : 'Turno registrado en bitácora.', 'success');
             if (resultado.aviso) showToast(resultado.aviso, 'warning');
             close();
-            container.dispatchEvent(new Event('actualizar-vista', { bubbles: true }));
           } catch (err) {
             mostrarErrorFormulario(form, err, campoRegistro(err, true));
           }
@@ -247,6 +246,28 @@ export async function renderTurnos(container, searchQuery = '') {
     });
   };
 
-  paint();
-  return { onPrimaryAction: () => openTurnoModal(null) };
+  pintarFilas();
+  const actualizar = activarRefresco({
+    signal, consultar: api.getTurnos,
+    aplicar(datos) {
+      const siguiente = firmaTurnos(datos);
+      const previos = turnos;
+      turnos = datos; // El formulario de edición también necesita los campos que no aparecen en la tabla.
+      if (siguiente === firma) return;
+      firma = siguiente;
+      mes.innerHTML = opcionesPeriodo(turnos, mes.value);
+      pintarFilas(true);
+      const anteriores = new Set(previos.map(t => t.id_turno));
+      if (datos.some(t => !anteriores.has(t.id_turno))) showToast('Se actualizaron los turnos');
+    },
+    indicarCarga(cargando) {
+      boton.disabled = cargando;
+      boton.textContent = cargando ? 'Actualizando…' : 'Actualizar';
+    },
+  });
+  boton.onclick = actualizar;
+  return {
+    actualizar, onPrimaryAction: () => openTurnoModal(null),
+    buscar(texto) { buscar.value = texto; pintarFilas(); },
+  };
 }

@@ -1,7 +1,7 @@
-import { api } from '../api.js?v=10';
-import { mesActual, tablaDatos, mostrarErrorFormulario, limitarTabla, formatNumber, openModal, showToast, escapeHtml } from '../utils.js?v=10';
+import { api } from '../api.js?v=11';
+import { mesActual, tablaDatos, mostrarErrorFormulario, limitarTabla, formatNumber, openModal, showToast, escapeHtml } from '../utils.js?v=11';
 
-export async function renderConciliacion(container) {
+export async function renderConciliacion(container, searchQuery, param, { filtros = {} } = {}) {
   const reportes = await api.getConciliacion();
 
   if (!container.isConnected) return;
@@ -63,6 +63,8 @@ export async function renderConciliacion(container) {
     </select></label></div><div data-detalle aria-live="polite"></div></section>`);
   const anio = container.querySelector('[name=anio-detalle]');
   const trimestre = container.querySelector('[name=trimestre-detalle]');
+  anio.value = filtros[anio.name] ?? anio.value;
+  trimestre.value = filtros[trimestre.name] ?? trimestre.value;
   const detalle = container.querySelector('[data-detalle]');
   let solicitud = 0;
   const cargar = async () => {
