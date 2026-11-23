@@ -16,9 +16,17 @@ public static class Taller
 
     /// <summary>Mantenimientos que tienen el bus en taller el día indicado (traducible a SQL).</summary>
     public static IQueryable<Mantenimiento> EnTallerEl(this IQueryable<Mantenimiento> q, DateTime dia)
+        => q.EnTallerEntre(dia, dia);
+
+    /// <summary>
+    /// Mantenimientos que tienen el bus en taller algún día de [desde, hasta] (traducible a SQL):
+    /// ingreso &lt;= hasta y (sin salida o salida &gt; desde). Con desde = hasta es la regla de un solo día.
+    /// </summary>
+    public static IQueryable<Mantenimiento> EnTallerEntre(this IQueryable<Mantenimiento> q, DateTime desde, DateTime hasta)
     {
-        var d = dia.Date;
-        return q.Where(m => m.fecha <= d && (m.fecha_salida == null || m.fecha_salida > d));
+        var d = desde.Date;
+        var h = hasta.Date;
+        return q.Where(m => m.fecha <= h && (m.fecha_salida == null || m.fecha_salida > d));
     }
 
     /// <summary>Días en taller = salida − ingreso; si sigue abierto, hoy − ingreso (Lima). Mismo día = 0.</summary>
